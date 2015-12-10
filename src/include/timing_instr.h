@@ -9,7 +9,7 @@
  * easier, use WT_RET_DONE macro together with the ret_done label.
  */
 
-#ifdef HAVE_TIMING_INSTR
+#ifdef HAVE_TIMING
 #define WT_BEGIN_FUNC(session, ptr)					       \
 	struct timespec ts_begin, ts_end;                                      \
         if(__wt_epoch(session, &ts_begin) == 0)	{		               \

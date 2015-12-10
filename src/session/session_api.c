@@ -1398,7 +1398,7 @@ __open_session(WT_CONNECTION_IMPL *conn,
 
 	session_ret->name = NULL;
 
-#ifdef HAVE_TIMING_INSTR
+#ifdef HAVE_TIMING
 	/* Create the per-sesion file to log timing instrumentation. */
 	{
 #define BUFSIZE 32
