@@ -43,7 +43,7 @@ retry:
 			 * Initially when we find no work, allow other
 			 * threads to run.
 			 */
-			__wt_yield();
+			__wt_yield(session);
 		else {
 			/*
 			 * If we haven't found work in a while, start sleeping
@@ -91,7 +91,7 @@ retry:
 		WT_PUBLISH(async->flush_state, WT_ASYNC_FLUSHING);
 	WT_ORDERED_READ(cur_tail, async->tail_slot);
 	while (cur_tail != prev_slot) {
-		__wt_yield();
+		__wt_yield(session);
 		WT_ORDERED_READ(cur_tail, async->tail_slot);
 	}
 	WT_PUBLISH(async->tail_slot, my_slot);

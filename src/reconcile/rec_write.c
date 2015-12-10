@@ -1459,7 +1459,7 @@ __rec_child_modify(WT_SESSION_IMPL *session,
 	 * page is prohibited, however, as the subtree is not reserved for our
 	 * exclusive use, there are other page states that must be considered.
 	 */
-	for (;; __wt_yield())
+	for (;; __wt_yield(session))
 		switch (r->tested_ref_state = ref->state) {
 		case WT_REF_DISK:
 			/* On disk, not modified by definition. */

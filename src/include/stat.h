@@ -280,6 +280,7 @@ struct __wt_connection_stats {
 	int64_t cache_inmem_splittable;
 	int64_t cache_lookaside_insert;
 	int64_t cache_lookaside_remove;
+	int64_t cache_noevict_set;
 	int64_t cache_overhead;
 	int64_t cache_pages_dirty;
 	int64_t cache_pages_inuse;

@@ -12,7 +12,7 @@
 /* In DIAGNOSTIC mode, yield in places where we want to encourage races. */
 #ifdef HAVE_DIAGNOSTIC
 #define	WT_DIAGNOSTIC_YIELD do {					\
-	__wt_yield();							\
+	__wt_yield(session);						\
 } while (0)
 #else
 #define	WT_DIAGNOSTIC_YIELD
@@ -45,6 +45,10 @@
 	int __ret;							\
 	if ((__ret = (a)) != 0)						\
 		return (__ret);						\
+} while (0)
+#define	WT_RET_DONE(a) do {						\
+		if ((ret = (a)) != 0)					\
+			goto done_ret;					\
 } while (0)
 #define	WT_RET_MSG(session, v, ...) do {				\
 	int __ret = (v);						\

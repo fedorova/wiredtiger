@@ -774,7 +774,7 @@ __log_newfile(WT_SESSION_IMPL *session, bool conn_open, bool *created)
 		WT_RET(__wt_log_wrlsn(session));
 		if (++yield_cnt > 10000)
 			return (EBUSY);
-		__wt_yield();
+		__wt_yield(session);
 	}
 	/*
 	 * Note, the file server worker thread has code that knows that
@@ -1314,7 +1314,7 @@ __wt_log_release(WT_SESSION_IMPL *session, WT_LOGSLOT *slot, bool *freep)
 			__wt_spin_unlock(session, &log->log_slot_lock);
 		WT_ERR(__wt_cond_signal(session, conn->log_wrlsn_cond));
 		if (++yield_count < WT_THOUSAND)
-			__wt_yield();
+			__wt_yield(session);
 		else
 			ret = __wt_cond_wait(session, log->log_write_cond, 200);
 		if (F_ISSET(session, WT_SESSION_LOCKED_SLOT))
@@ -1932,7 +1932,7 @@ __log_write_internal(WT_SESSION_IMPL *session, WT_ITEM *record, WT_LSN *lsnp,
 		 */
 		if (conn->log_cond != NULL) {
 			WT_ERR(__wt_cond_signal(session, conn->log_cond));
-			__wt_yield();
+			__wt_yield(session);
 		} else
 			WT_ERR(__wt_log_force_write(session, 1));
 	}

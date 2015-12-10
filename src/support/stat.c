@@ -554,6 +554,7 @@ static const char * const __stats_connection_desc[] = {
 	"cache: in-memory page passed criteria to be split",
 	"cache: lookaside table insert calls",
 	"cache: lookaside table remove calls",
+	"cache: WT_BTREE_NO_EVICTION flag set",
 	"cache: percentage overhead",
 	"cache: tracked dirty pages in the cache",
 	"cache: pages currently held in the cache",
@@ -753,6 +754,7 @@ __wt_stat_connection_clear_single(WT_CONNECTION_STATS *stats)
 		/* not clearing cache_bytes_dirty */
 		/* not clearing cache_pages_dirty */
 	stats->cache_eviction_clean = 0;
+	stats->cache_noevict_set = 0;
 		/* not clearing file_open */
 	stats->memory_allocation = 0;
 	stats->memory_free = 0;
@@ -947,6 +949,7 @@ __wt_stat_connection_aggregate(
 	to->cache_bytes_dirty += WT_STAT_READ(from, cache_bytes_dirty);
 	to->cache_pages_dirty += WT_STAT_READ(from, cache_pages_dirty);
 	to->cache_eviction_clean += WT_STAT_READ(from, cache_eviction_clean);
+	to->cache_noevict_set += WT_STAT_READ(from, cache_noevict_set);
 	to->file_open += WT_STAT_READ(from, file_open);
 	to->memory_allocation += WT_STAT_READ(from, memory_allocation);
 	to->memory_free += WT_STAT_READ(from, memory_free);

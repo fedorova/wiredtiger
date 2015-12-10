@@ -68,14 +68,15 @@ __wt_spin_lock(WT_SESSION_IMPL *session, WT_SPINLOCK *t)
 {
 	int i;
 
-	WT_UNUSED(session);
+	WT_BEGIN_FUNC(session, t);
 
 	while (__sync_lock_test_and_set(&t->lock, 1)) {
 		for (i = 0; t->lock && i < WT_SPIN_COUNT; i++)
 			WT_PAUSE();
 		if (t->lock)
-			__wt_yield();
+			__wt_yield(session);
 	}
+	WT_END_FUNC(session, t);
 }
 
 /*
@@ -86,8 +87,9 @@ static inline void
 __wt_spin_unlock(WT_SESSION_IMPL *session, WT_SPINLOCK *t)
 {
 	WT_UNUSED(session);
-
+	WT_BEGIN_FUNC(session, t);
 	__sync_lock_release(&t->lock);
+	WT_END_FUNC(session, t);
 }
 
 #elif SPINLOCK_TYPE == SPINLOCK_PTHREAD_MUTEX ||\

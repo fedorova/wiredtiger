@@ -606,7 +606,7 @@ skip_evict:
 		if (stalled)
 			wait_cnt += WT_THOUSAND;
 		else if (++wait_cnt < WT_THOUSAND) {
-			__wt_yield();
+			__wt_yield(session);
 			continue;
 		}
 

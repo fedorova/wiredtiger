@@ -76,6 +76,18 @@ no)	wt_cv_enable_diagnostic=no;;
 esac
 AC_MSG_RESULT($wt_cv_enable_diagnostic)
 
+AH_TEMPLATE(HAVE_TIMING, [Define to 1 for timing instrumentation.])
+AC_MSG_CHECKING(if --enable-timing option specified)
+AC_ARG_ENABLE(timing,
+	[AS_HELP_STRING([--enable-timing],
+	    [Configure for timing instrumentation.])], r=$enableval, r=no)
+case "$r" in
+no)	wt_cv_enable_timing=no;;
+*)	AC_DEFINE(HAVE_TIMING)
+	wt_cv_enable_timing=yes;;
+esac
+AC_MSG_RESULT($wt_cv_enable_timing)
+
 AC_MSG_CHECKING(if --enable-java option specified)
 AC_ARG_ENABLE(java,
 	[AS_HELP_STRING([--enable-java],

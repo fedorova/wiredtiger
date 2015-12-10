@@ -368,7 +368,7 @@ __log_file_server(void *arg)
 			 * until it is set.  This should rarely happen.
 			 */
 			while (log->log_close_lsn.file < filenum)
-				__wt_yield();
+				__wt_yield(session);
 
 			if (__wt_log_cmp(
 			    &log->write_lsn, &log->log_close_lsn) >= 0) {
@@ -470,7 +470,7 @@ __log_file_server(void *arg)
 				 * thread a chance to run and try again in
 				 * this case.
 				 */
-				__wt_yield();
+				__wt_yield(session);
 				continue;
 			}
 		}

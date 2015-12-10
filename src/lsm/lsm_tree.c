@@ -116,7 +116,7 @@ __lsm_tree_close(WT_SESSION_IMPL *session, WT_LSM_TREE *lsm_tree)
 			    __wt_lsm_manager_clear_tree(session, lsm_tree));
 			WT_RET(ret);
 		}
-		__wt_yield();
+		__wt_yield(session);
 	}
 	return (0);
 }

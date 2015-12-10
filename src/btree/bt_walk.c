@@ -64,7 +64,7 @@ retry:	WT_INTL_INDEX_GET(session, ref->home, pindex);
 	 * deepen, their reference structure home value are updated; yield and
 	 * wait for that to happen.
 	 */
-	__wt_yield();
+	__wt_yield(session);
 	goto retry;
 }
 

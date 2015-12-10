@@ -57,6 +57,8 @@ __wt_evict(WT_SESSION_IMPL *session, WT_REF *ref, bool closing)
 	WT_PAGE_MODIFY *mod;
 	bool clean_page, forced_eviction, inmem_split, tree_dead;
 
+	WT_BEGIN_FUNC(session, NULL);
+
 	conn = S2C(session);
 
 	/* Checkpoints should never do eviction. */
@@ -67,7 +69,7 @@ __wt_evict(WT_SESSION_IMPL *session, WT_REF *ref, bool closing)
 	inmem_split = false;
 	tree_dead = F_ISSET(session->dhandle, WT_DHANDLE_DEAD);
 
-	WT_RET(__wt_verbose(session, WT_VERB_EVICT,
+	WT_RET_DONE(__wt_verbose(session, WT_VERB_EVICT,
 	    "page %p (%s)", page, __wt_page_type_string(page->type)));
 
 	/*
@@ -143,7 +145,8 @@ done:	if (((inmem_split && ret == 0) || (forced_eviction && ret == EBUSY)) &&
 		F_SET(conn->cache, WT_CACHE_WOULD_BLOCK);
 		WT_TRET(__wt_evict_server_wake(session));
 	}
-
+done_ret:
+	WT_END_FUNC(session, NULL);
 	return (ret);
 }
 /*

@@ -289,7 +289,7 @@ __wt_lsm_manager_destroy(WT_SESSION_IMPL *session)
 		 * Stop the main LSM manager thread first.
 		 */
 		while (F_ISSET(conn, WT_CONN_SERVER_LSM))
-			__wt_yield();
+			__wt_yield(session);
 
 		/* Clean up open LSM handles. */
 		ret = __wt_lsm_tree_close_all(session);

@@ -335,6 +335,7 @@ union __wt_rand_state;
 #include "meta.h"
 #include "os.h"
 #include "schema.h"
+#include "timing_instr.h"
 #include "txn.h"
 
 #include "session.h"			/* required by connection.h */

@@ -239,7 +239,7 @@ __wt_session_lock_dhandle(
 		lock_busy = true;
 
 		/* Give other threads a chance to make progress. */
-		__wt_yield();
+		__wt_yield(session);
 	}
 }
 

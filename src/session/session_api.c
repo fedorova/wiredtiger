@@ -1398,6 +1398,23 @@ __open_session(WT_CONNECTION_IMPL *conn,
 
 	session_ret->name = NULL;
 
+#ifdef HAVE_TIMING_INSTR
+	/* Create the per-sesion file to log timing instrumentation. */
+	{
+#define BUFSIZE 32
+		char *fname_sufffix = "/tmpfs/log.txt";
+		char namebuf[BUFSIZE];
+
+		snprintf((char*)namebuf, BUFSIZE, "%d.%s",
+			 fname_suffix, session_ret->id)
+			session_ret->perflog_fstr = fopen(namebuf, "w");
+		if(session_ret->perflog_fstr == NULL)
+			__wt_msg(session_ret,
+				 "Could not create the performance",
+				 " instrumentation logging file %s", namebuf);
+	}
+#endif
+
 	/*
 	 * Publish: make the entry visible to server threads.  There must be a
 	 * barrier for two reasons, to ensure structure fields are set before
