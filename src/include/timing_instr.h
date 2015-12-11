@@ -11,25 +11,28 @@
 
 #ifdef HAVE_TIMING
 #define WT_BEGIN_FUNC(session, ptr)					       \
-	struct timespec ts_begin, ts_end;                                      \
+	{	                                                               \
+        struct timespec ts_begin, ts_end;				       \
         if(__wt_epoch(session, &ts_begin) == 0)	{		               \
-	        if(session->perflog_fstr !=NULL) {                             \
-        		fprintf(session->perflog_fstr, "--> %s %d %p %ld\n",   \
+	        if(session->timing_log !=NULL) {                               \
+        		fprintf(session->timing_log, "--> %s %d %p %ld\n",     \
 				__func__, (session)->id, ptr,		       \
 				ts_begin.tv_sec * WT_BILLION +		       \
 				ts_begin.tv_nsec);			       \
 	        }                                                              \
 	}                                                                      \
-
+	}
 #define WT_END_FUNC(session, ptr)					       \
+	{	                                                               \
 	struct timespec ts_begin, ts_end;                                      \
         if(__wt_epoch(session, &ts_begin) == 0)	{		               \
-	        if(session->perflog_fstr !=NULL) {                             \
-        		fprintf(session->perflog_fstr, "<-- %s %d %p %ld\n",   \
+	        if(session->timing_log !=NULL) {                               \
+        		fprintf(session->timing_log, "<-- %s %d %p %ld\n",     \
 				__func__, (session)->id, ptr,		       \
 				ts_begin.tv_sec * WT_BILLION +		       \
 				ts_begin.tv_nsec);			       \
 	        }                                                              \
+	}                                                                      \
 	}
 #else
 #define WT_BEGIN_FUNC(session, ptr)

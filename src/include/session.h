@@ -191,4 +191,7 @@ struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_session_impl {
 	uint32_t   hazard_size;		/* Allocated slots in hazard array. */
 	uint32_t   nhazard;		/* Count of active hazard pointers */
 	WT_HAZARD *hazard;		/* Hazard pointer array */
+#ifdef HAVE_TIMING
+	FILE      *timing_log;         /* A file for timestamp logs */
+#endif
 };
