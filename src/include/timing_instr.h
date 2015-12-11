@@ -16,7 +16,7 @@
 	if(session != NULL)                                                    \
         if(__wt_epoch(session, &ts_begin) == 0)	{		               \
 	        if(session->timing_log !=NULL) {                               \
-        		fprintf(session->timing_log, "--> %s %d null %ld\n",   \
+        		fprintf(session->timing_log, "--> %s %d %ld\n",   \
 				__func__, (session)->id, 		       \
 				ts_begin.tv_sec * WT_BILLION +		       \
 				ts_begin.tv_nsec);			       \
@@ -29,7 +29,7 @@
 	if(session != NULL)                                                    \
         if(__wt_epoch(session, &ts_begin) == 0)			               \
 	        if(session->timing_log !=NULL)                                 \
-        		fprintf(session->timing_log, "<-- %s %d null %ld\n",   \
+        		fprintf(session->timing_log, "<-- %s %d %ld\n",   \
 				__func__, (session)->id, 		       \
 				ts_begin.tv_sec * WT_BILLION +		       \
 				ts_begin.tv_nsec);			       \
@@ -42,10 +42,10 @@
 	if(session != NULL)                                                    \
         if(__wt_epoch(session, &ts_begin) == 0)			               \
 	        if(session->timing_log !=NULL)                                 \
-        		fprintf(session->timing_log, "--> %s %d %p %ld\n",     \
-				__func__, (session)->id, spinlock, 	       \
+        		fprintf(session->timing_log, "--> %s %d %ld %p\n",     \
+				__func__, (session)->id,  	               \
 				ts_begin.tv_sec * WT_BILLION +		       \
-				ts_begin.tv_nsec);			       \
+				ts_begin.tv_nsec, spinlock);		       \
          }
 
 #define WT_END_SPINLOCK(session, spinlock)                                     \
@@ -54,10 +54,10 @@
 	if(session != NULL)                                                    \
         if(__wt_epoch(session, &ts_begin) == 0)			               \
 	        if(session->timing_log !=NULL)                                 \
-        		fprintf(session->timing_log, "<-- %s %d %p %ld\n",     \
-				__func__, (session)->id, spinlock, 	       \
+        		fprintf(session->timing_log, "<-- %s %d %ld %p\n",     \
+				__func__, (session)->id,         	       \
 				ts_begin.tv_sec * WT_BILLION +		       \
-				ts_begin.tv_nsec);			       \
+				ts_begin.tv_nsec, spinlock);		       \
          }
 #elif SPINLOCK_TYPE == SPINLOCK_PTHREAD_MUTEX ||\
 	SPINLOCK_TYPE == SPINLOCK_PTHREAD_MUTEX_ADAPTIVE ||\
@@ -68,10 +68,10 @@
 	if(session != NULL)                                                    \
         if(__wt_epoch(session, &ts_begin) == 0)			               \
 	        if(session->timing_log !=NULL)                                 \
-        		fprintf(session->timing_log, "--> %s %d %s %ld\n",     \
-				__func__, (session)->id, spinlock->name,       \
+        		fprintf(session->timing_log, "--> %s %d %ld %s\n",     \
+				__func__, (session)->id,                       \
 				ts_begin.tv_sec * WT_BILLION +		       \
-				ts_begin.tv_nsec);			       \
+				ts_begin.tv_nsec, spinlock->name);	       \
          }
 
 #define WT_END_SPINLOCK(session, spinlock)                                     \
@@ -80,10 +80,10 @@
 	if(session != NULL)                                                    \
         if(__wt_epoch(session, &ts_begin) == 0)			               \
 	        if(session->timing_log !=NULL)                                 \
-        		fprintf(session->timing_log, "<-- %s %d %s %ld\n",     \
-				__func__, (session)->id, spinlock->name,       \
+        		fprintf(session->timing_log, "<-- %s %d %ld %s\n",     \
+				__func__, (session)->id,                       \
 				ts_begin.tv_sec * WT_BILLION +		       \
-				ts_begin.tv_nsec);			       \
+				ts_begin.tv_nsec, spinlock->name);	       \
          }
 #else
 
