@@ -92,8 +92,8 @@
 #endif
 
 #else
-#define WT_BEGIN_FUNC(session, ptr)
-#define WT_END_FUNC(session, ptr)
+#define WT_BEGIN_FUNC(session)
+#define WT_END_FUNC(session)
 #define WT_BEGIN_SPINLOCK(session, spinlock)
 #define WT_END_SPINLOCK(session, spinlock)
 #endif
