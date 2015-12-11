@@ -1402,11 +1402,11 @@ __open_session(WT_CONNECTION_IMPL *conn,
 	/* Create the per-sesion file to log timing instrumentation. */
 	{
 #define BUFSIZE 32
-		char *fname_suffix = "/tmpfs/log.txt";
+		char *fname_prefix = "/tmpfs/log.txt";
 		char namebuf[BUFSIZE];
 
-		snprintf((char*)namebuf, BUFSIZE, "%d.%s",
-			 session_ret->id, fname_suffix);
+		snprintf((char*)namebuf, BUFSIZE, "%s.%d",
+			 fname_prefix, session_ret->id);
 		session_ret->timing_log = fopen(namebuf, "w");
 		if(session_ret->timing_log == NULL)
 			__wt_msg(session_ret,
