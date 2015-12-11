@@ -9,14 +9,13 @@ import argparse
 
 class LogRecord:
 
-    def __init__(self, func, thread, time, arg):
+    def __init__(self, func, thread, time):
         self.func = func;
         self.thread = thread;
         self.time = long(time);
-        self.arg = long(arg);
 
     def printLogRecord(self):
-        print(func + " " + str(thread) + " " + str(time) + hex(arg));
+        print(func + " " + str(thread) + " " + str(time));
 
 #
 # PerfData class contains informtation about the function running
@@ -64,15 +63,14 @@ def parse_file(fname):
         thread = 0;
         time = 0;
 
-        if(len(words) < 5):
+        if(len(words) < 4):
            continue;
 
         try:
-            thread = int(words[2]);
-            time = long(words[4]);
             func = words[1];
-            arg = words[3]
-            rec = LogRecord(func, thread, time, arg)
+            thread = int(words[2]);
+            time = long(words[3]);
+            rec = LogRecord(func, thread, time)
         except ValueError:
             print "Could not parse: " + line;
             continue;
@@ -80,14 +78,15 @@ def parse_file(fname):
         if(words[0] == "-->"):
             # Timestamp for function entrance
             # Push each entry record onto the stack.
-
             stack.append(rec);
+
         elif(words[0] == "<--"):
+            found = False;
+
             # Timestamp for function exit. Find its
             # corresponding entry record by searching
             # the stack.
-
-            while(True):
+            while(len(stack) > 0):
                 stackRec = stack.pop();
                 if(stackRec is None):
                     print("Ran out of opening timestamps when searching "
@@ -105,8 +104,8 @@ def parse_file(fname):
                     #      "closing timestamp. Instead saw " + rec.func);
                     continue;
                 else:
-                    # We have a proper function record. Let's add the data to the
-                    # file's dictionary for this function. 
+                    # We have a proper function record. Let's add the data to
+                    # the file's dictionary for this function.
 
                     runningTime = long(rec.time) - long(stackRec.time);
                     thisFileDict = perFile[fname];
@@ -114,20 +113,23 @@ def parse_file(fname):
                     if(not thisFileDict.has_key(stackRec.func)):
                         newPDR = PerfData();
                         thisFileDict[stackRec.func] = newPDR;
-                        
+
                     pdr = thisFileDict[stackRec.func];
                     pdr.totalRunningTime = pdr.totalRunningTime + runningTime;
                     pdr.numCalls = pdr.numCalls + 1;
-                    
+                    found = True
                     break;
-
+            if(not found):
+                print("Could not find matching function entrance for line: \n"
+                      + line);
 
     print("\n");
-    
+
 
 def main():
 
-    parser = argparse.ArgumentParser(description='Process performance log files');
+    parser = argparse.ArgumentParser(description=
+                                     'Process performance log files');
     parser.add_argument('files', type=str, nargs='+',
                         help='log files to process');
 
