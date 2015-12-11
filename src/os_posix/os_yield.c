@@ -15,7 +15,7 @@
 void
 __wt_yield(WT_SESSION_IMPL *session)
 {
-	WT_BEGIN_FUNC(session, NULL);
+	WT_BEGIN_FUNC(session);
 	sched_yield();
-	WT_END_FUNC(session, NULL);
+	WT_END_FUNC(session);
 }

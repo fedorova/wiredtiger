@@ -57,7 +57,7 @@ __wt_evict(WT_SESSION_IMPL *session, WT_REF *ref, bool closing)
 	WT_PAGE_MODIFY *mod;
 	bool clean_page, forced_eviction, inmem_split, tree_dead;
 
-	WT_BEGIN_FUNC(session, NULL);
+	WT_BEGIN_FUNC(session);
 
 	conn = S2C(session);
 
@@ -146,7 +146,7 @@ done:	if (((inmem_split && ret == 0) || (forced_eviction && ret == EBUSY)) &&
 		WT_TRET(__wt_evict_server_wake(session));
 	}
 done_ret:
-	WT_END_FUNC(session, NULL);
+	WT_END_FUNC(session);
 	return (ret);
 }
 /*

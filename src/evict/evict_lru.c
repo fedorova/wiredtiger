@@ -1359,7 +1359,7 @@ __evict_get_ref(
 	WT_EVICT_ENTRY *evict;
 	uint32_t candidates;
 
-	WT_BEGIN_FUNC(session, NULL);
+	WT_BEGIN_FUNC(session);
 
 	cache = S2C(session)->cache;
 	*btreep = NULL;
@@ -1430,7 +1430,7 @@ __evict_get_ref(
 	__wt_spin_unlock(session, &cache->evict_lock);
 
 done_ret:
-	WT_END_FUNC(session, NULL);
+	WT_END_FUNC(session);
 	return ((*refp == NULL) ? WT_NOTFOUND : 0);
 }
 
@@ -1446,7 +1446,7 @@ __evict_page(WT_SESSION_IMPL *session, bool is_server)
 	WT_PAGE *page;
 	WT_REF *ref;
 
-	WT_BEGIN_FUNC(session, NULL);
+	WT_BEGIN_FUNC(session);
 	WT_RET_DONE(__evict_get_ref(session, is_server, &btree, &ref));
 	WT_ASSERT(session, ref->state == WT_REF_LOCKED);
 
@@ -1482,7 +1482,7 @@ __evict_page(WT_SESSION_IMPL *session, bool is_server)
 	(void)__wt_atomic_subv32(&btree->evict_busy, 1);
 
 done_ret:
-	WT_END_FUNC(session, NULL);
+	WT_END_FUNC(session);
 	return (ret);
 }
 
