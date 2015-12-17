@@ -17,7 +17,7 @@ class LogRecord:
         print(func + " " + str(thread) + " " + str(time));
 
 #
-# LockRecord contains temporary information for generatinglock-held times
+# LockRecord contains temporary information for generating lock-held times
 
 class LockRecord:
 
@@ -28,7 +28,8 @@ class LockRecord:
         self.timeAcquired = long(timeAcquired);
 
     def printLockRecord(self):
-        print(name + ": [" + str(thread) + "]" + str(timeAcquired));
+        print(self.name + ": [" + str(self.thread) + "]" +
+              str(self.timeAcquired));
 
 #
 # PerfData class contains informtation about the function running
@@ -65,16 +66,28 @@ class LockData:
         self.lastAcquireRecord = None;
 
     def getAverageAcquire(self):
-        return (float(self.timeAcquire) / float(self.numAcquire));
+        if(self.numAcquire > 0):
+            return (float(self.timeAcquire) / float(self.numAcquire));
+        else:
+            return 0;
 
     def getAverageRelease(self):
-        return (float(self.timeRelease) / float(self.numRelease));
+        if(self.numRelease > 0):
+            return (float(self.timeRelease) / float(self.numRelease));
+        else:
+            return 0;
 
     def getAverageTryLock(self):
-        return (float(self.timeTryLock) / float(self.numTryLock));
+        if(self.numTryLock > 0):
+            return (float(self.timeTryLock) / float(self.numTryLock));
+        else:
+            return 0;
 
     def getAverageTimeHeld(self):
-        return (float(self.timeHeld) / float(self.numRelease));
+        if(self.numRelease > 0):
+            return (float(self.timeHeld) / float(self.numRelease));
+        else:
+            return 0;
 
     def printSelf(self):
         print("\t Num acquire: " + str(self.numAcquire));
@@ -152,35 +165,37 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
                        nameWords):
 
     lockName = "";
+    func = logRec.func
 
     # Reconstruct the lock name
-    for(word in nameWords):
+    for word in nameWords:
         lockName = lockName + word + " ";
 
     print("Lock name: " + lockName);
 
-    if(lockName not locksDictionary.has_key(lockName)):
+    if(not locksDictionary.has_key(lockName)):
         lockData = LockData();
         locksDictionary[lockName] = lockData;
 
     lockData = locksDictionary[lockName];
-
+    lastAcquireRecord = lockData.lastAcquireRecord;
+    
     # If this is an acquire or trylock, simply update the stats in the
-    # lockData object and push it on the lock stack.
+    # lockData object and remember the lastAcquire record, so we can
+    # later match it with a corresponding lock release.
     #
     # If this is a release, update the stats in the lockData object and
-    # find the corresponding acquire or trylock in the lockStack, so
-    # we can compute the lock held time.
+    # get the corresponding acquire or trylock so we can compute the lock
+    # held time.
     #
     if(looks_like_acquire(func) or looks_like_trylock(func)):
 
         lockRec = LockRecord(lockName, func, logRec.thread, logRec.time);
 
-        lastAcquireRecord = lockData.lastAcquireRecord;
-
         if(looks_like_acquire(func)):
-            if(lastAcquireRecord not None):
-                print("That's weird. Another acquire record seen on acquire.");
+            if(lastAcquireRecord is not None):
+                print("That's weird. Another acquire record seen on acquire. "
+                      " for lock " + lockName);
                 print("Current lock record:");
                 lockRec.printLockRecord();
                 print("Existing acquire record:");
@@ -190,11 +205,11 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
 
             lockData.numAcquire = lockData.numAcquire + 1;
             lockData.timeAcquire = lockData.timeAcquire + runningTime;
-        else:
-            if(lastAcquireRecord not None):
+        elif(looks_like_trylock(func)):
+            if(lastAcquireRecord is not None):
                 if(lastAcquireRecord.funcName != func):
-                    print("That's weird. Another lock acquire record seen, "
-                          "but that's not us.");
+                    print("Warning: A trylock record seen, but not in the "
+                          "same function as ours!");
                     print("Current lock record:");
                     lockRec.printLockRecord();
                     print("Existing acquire record:");
@@ -210,8 +225,11 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
 
             lockData.numTryLock = lockData.numTryLock + 1;
             lockData.timeTryLock = lockData.timeTryLock + runningTime;
+        else:
+            print("PANIC!")
+            sys.exit(-1);
 
-    else if(looks_like_release(func)):
+    elif(looks_like_release(func)):
 
         if(lastAcquireRecord is None):
             print("Could not find a matching acquire for: ")
@@ -222,8 +240,15 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
                   + str(lockHeldTime) + "ns");
             lockData.timeHeld = lockData.timeHeld + lockHeldTime;
 
+            # Reset the lockAcquire record to null
+            lockData.lastAcquireRecord = None;
+            
         lockData.numRelease = lockData.numRelease + 1;
         lockData.timeRelease = lockData.timeRelease + runningTime;
+
+    else:
+        print("PANIC! Unrecognized lock function: " + func);
+        sys.exit(-1);
 
 #
 # A per-file dictionary of functions that we encounter in the log file.
@@ -313,7 +338,7 @@ def parse_file(fname):
                     # If this is a lock-related function, do lock-related
                     # processing
                     if(len(words) > 4 and looks_like_lock(func)):
-                        do_lock_processing(perFileLocks[fname], lockStack, rec,
+                        do_lock_processing(perFileLocks[fname], rec,
                                            runningTime,
                                            words[4:len(words)]);
 
@@ -346,6 +371,13 @@ def main():
         for fkey, pdr in perFileDict.iteritems():
             print(fkey + ":");
             pdr.printSelf();
+
+        lockDataDict = perFileLocks[key];
+
+        print("\nLOCKS SUMMARY");
+        for lockKey, lockData in lockDataDict.iteritems():
+            print("Lock \"" + lockKey + "\":");
+            lockData.printSelf();
 
         print("------------------------------");
 
