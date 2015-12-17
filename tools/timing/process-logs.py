@@ -171,8 +171,6 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
     for word in nameWords:
         lockName = lockName + word + " ";
 
-    print("Lock name: " + lockName);
-
     if(not locksDictionary.has_key(lockName)):
         lockData = LockData();
         locksDictionary[lockName] = lockData;
@@ -236,8 +234,6 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
             logRec.printLogRecord();
         else:
             lockHeldTime = logRec.time - lastAcquireRecord.timeAcquired;
-            print("Lock " + lockName + " was held for "
-                  + str(lockHeldTime) + "ns");
             lockData.timeHeld = lockData.timeHeld + lockHeldTime;
 
             # Reset the lockAcquire record to null
