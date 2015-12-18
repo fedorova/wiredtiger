@@ -1415,6 +1415,29 @@ __open_session(WT_CONNECTION_IMPL *conn,
 	}
 #endif
 
+#if 1
+	{
+		/* Bind the thread to a core */
+		cpu_set_t cpuset;
+		pthread_t thread;
+		int ret;
+
+		thread = pthread_self();
+
+		CPU_ZERO(&cpuset);
+		CPU_SET(session_ret->id, &cpuset);
+		ret = pthread_setaffinity_np(thread, sizeof(cpu_set_t),
+					     &cpuset);
+		if(ret != 0)
+			__wt_msg(session_ret,
+				 "Could not bind thread %ld to CPU %d.\n",
+				 (long)thread, session_ret->id);
+		else
+			__wt_msg(session_ret,
+				 "Bound thread %ld to CPU %d.\n",
+				 (long)thread, session_ret->id);
+	}
+#endif
 	/*
 	 * Publish: make the entry visible to server threads.  There must be a
 	 * barrier for two reasons, to ensure structure fields are set before
