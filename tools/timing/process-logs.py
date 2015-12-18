@@ -14,7 +14,7 @@ class LogRecord:
         self.time = long(time);
 
     def printLogRecord(self):
-        print(func + " " + str(thread) + " " + str(time));
+        print(self.func + " " + str(self.thread) + " " + str(self.time));
 
 #
 # LockRecord contains temporary information for generating lock-held times
