@@ -1367,18 +1367,15 @@ __evict_get_ref(
 
 	/*
 	 * Avoid the LRU lock if no pages are available.  If there are pages
-	 * available, spin until we get the lock.  If this function returns
+	 * available, get the lock.  If this function returns
 	 * without getting a page to evict, application threads assume there
 	 * are no more pages available and will attempt to wake the eviction
 	 * server.
 	 */
-	for (;;) {
-		if (cache->evict_current == NULL)
-			goto done_ret;
-		if (__wt_spin_trylock(session, &cache->evict_lock) == 0)
-			break;
-		__wt_yield(session);
-	}
+	if (cache->evict_current == NULL)
+		goto done_ret;
+
+	__wt_spin_lock(session, &cache->evict_lock);
 
 	/*
 	 * The eviction server only tries to evict half of the pages before
