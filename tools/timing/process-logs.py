@@ -238,7 +238,7 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
 
             # Reset the lockAcquire record to null
             lockData.lastAcquireRecord = None;
-            
+
         lockData.numRelease = lockData.numRelease + 1;
         lockData.timeRelease = lockData.timeRelease + runningTime;
 
