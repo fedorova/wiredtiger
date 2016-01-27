@@ -317,7 +317,7 @@ __wt_fair_lock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 		if (++pause_cnt < WT_THOUSAND)
 			WT_PAUSE();
 		else
-			__wt_sleep(0, 10);
+			__wt_yield(session);
 	}
 
 	return (0);
@@ -353,3 +353,71 @@ __wt_fair_islocked(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 	return (lock->fair_lock_waiter != lock->fair_lock_owner);
 }
 #endif
+
+static inline int
+__wt_fs_lock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
+{
+	uint16_t ticket;
+	int pause_cnt;
+
+	WT_UNUSED(session);
+//	printf("%d: E\n", session->id);
+	/*
+	 * Possibly wrap: if we have more than 64K lockers waiting, the ticket
+	 * value will wrap and two lockers will simultaneously be granted the
+	 * lock.
+	 */
+	ticket = __wt_atomic_fetch_add16(&lock->fast.fair_lock_waiter, 1);
+
+#define WT_FAIRLOCK_CLOSE 24 // Should be set close to the number of CPUs
+retry:
+	while( ticket != lock->fast.fair_lock_owner
+	       &&   (ticket - lock->fast.fair_lock_owner) < WT_FAIRLOCK_CLOSE)
+		WT_PAUSE();
+
+	if(ticket == lock->fast.fair_lock_owner)
+		return 0;
+	else
+	{
+		struct timeval now;
+		struct timespec timeout;
+		int ret;
+
+		pthread_mutex_lock(&lock->mtx);
+
+		gettimeofday(&now, NULL);
+		timeout.tv_sec = now.tv_sec + 1;
+		timeout.tv_nsec = now.tv_usec * 1000;
+
+		/* If we are far from getting the lock, wait */
+		if((ticket - lock->fast.fair_lock_owner) > WT_FAIRLOCK_CLOSE)
+		{
+
+			//	printf("Sleeping: ticket = %d, lock owner = %d\n",
+			//	       ticket, lock->fast.fair_lock_owner);
+
+			lock->num_sleepers++;
+			ret = pthread_cond_wait(&lock->cond, &lock->mtx);
+			lock->num_sleepers--;
+
+			lock->num_sleeps++;
+			//		printf("%d sleeps, %d sleepers\n", lock->num_sleeps,
+			//     lock->num_sleepers);
+		}
+		pthread_mutex_unlock(&lock->mtx);
+		goto retry;
+	}
+}
+
+static inline int
+__wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
+{
+	pthread_mutex_lock(&lock->mtx);
+	__wt_fair_unlock(session, &lock->fast);
+	if(lock->num_sleepers > 0)
+		pthread_cond_broadcast(&lock->cond);
+	lock->num_wakes++;
+	//printf("%d wakes, %d sleepers, %d lock owner\n", lock->num_wakes,
+	//       lock->num_sleepers, lock->fast.fair_lock_owner);
+	pthread_mutex_unlock(&lock->mtx);
+}

@@ -255,6 +255,7 @@ struct __wt_connection_stats {
 	int64_t cache_bytes_overflow;
 	int64_t cache_bytes_read;
 	int64_t cache_bytes_write;
+	int64_t cache_evictgetref_early_exit;
 	int64_t cache_eviction_app;
 	int64_t cache_eviction_checkpoint;
 	int64_t cache_eviction_clean;
@@ -433,6 +434,7 @@ struct __wt_dsrc_stats {
 	int64_t btree_row_leaf;
 	int64_t cache_bytes_read;
 	int64_t cache_bytes_write;
+	int64_t cache_evictgetref_early_exit;
 	int64_t cache_eviction_checkpoint;
 	int64_t cache_eviction_clean;
 	int64_t cache_eviction_deepen;

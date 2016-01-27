@@ -40,6 +40,7 @@ static const char * const __stats_dsrc_desc[] = {
 	"btree: row-store leaf pages",
 	"cache: bytes read into cache",
 	"cache: bytes written from cache",
+	"cache: number of times we exit early from __evict_get_ref",
 	"cache: checkpoint blocked page eviction",
 	"cache: unmodified pages evicted",
 	"cache: page split during eviction deepened the tree",
@@ -171,6 +172,7 @@ __wt_stat_dsrc_clear_single(WT_DSRC_STATS *stats)
 	stats->cache_eviction_split_internal = 0;
 	stats->cache_eviction_split_leaf = 0;
 	stats->cache_eviction_dirty = 0;
+	stats->cache_evictgetref_early_exit = 0;
 	stats->cache_read_overflow = 0;
 	stats->cache_overflow_value = 0;
 	stats->cache_eviction_deepen = 0;
@@ -292,6 +294,8 @@ __wt_stat_dsrc_aggregate_single(
 	    from->cache_eviction_split_internal;
 	to->cache_eviction_split_leaf += from->cache_eviction_split_leaf;
 	to->cache_eviction_dirty += from->cache_eviction_dirty;
+	to->cache_evictgetref_early_exit +=
+	    from->cache_evictgetref_early_exit;
 	to->cache_read_overflow += from->cache_read_overflow;
 	to->cache_overflow_value += from->cache_overflow_value;
 	to->cache_eviction_deepen += from->cache_eviction_deepen;
@@ -424,6 +428,8 @@ __wt_stat_dsrc_aggregate(
 	to->cache_eviction_split_leaf +=
 	    WT_STAT_READ(from, cache_eviction_split_leaf);
 	to->cache_eviction_dirty += WT_STAT_READ(from, cache_eviction_dirty);
+	to->cache_evictgetref_early_exit +=
+	    WT_STAT_READ(from, cache_evictgetref_early_exit);
 	to->cache_read_overflow += WT_STAT_READ(from, cache_read_overflow);
 	to->cache_overflow_value += WT_STAT_READ(from, cache_overflow_value);
 	to->cache_eviction_deepen +=
@@ -529,6 +535,7 @@ static const char * const __stats_connection_desc[] = {
 	"cache: tracked bytes belonging to overflow pages in the cache",
 	"cache: bytes read into cache",
 	"cache: bytes written from cache",
+	"cache: number of times we exit early from __evict_get_ref",
 	"cache: pages evicted by application threads",
 	"cache: checkpoint blocked page eviction",
 	"cache: unmodified pages evicted",
@@ -735,6 +742,7 @@ __wt_stat_connection_clear_single(WT_CONNECTION_STATS *stats)
 		/* not clearing cache_bytes_max */
 		/* not clearing cache_eviction_maximum_page_size */
 	stats->cache_eviction_dirty = 0;
+	stats->cache_evictgetref_early_exit = 0;
 	stats->cache_eviction_deepen = 0;
 	stats->cache_write_lookaside = 0;
 		/* not clearing cache_pages_inuse */
@@ -927,6 +935,8 @@ __wt_stat_connection_aggregate(
 	to->cache_eviction_maximum_page_size +=
 	    WT_STAT_READ(from, cache_eviction_maximum_page_size);
 	to->cache_eviction_dirty += WT_STAT_READ(from, cache_eviction_dirty);
+	to->cache_evictgetref_early_exit +=
+	    WT_STAT_READ(from, cache_evictgetref_early_exit);
 	to->cache_eviction_deepen +=
 	    WT_STAT_READ(from, cache_eviction_deepen);
 	to->cache_write_lookaside +=

@@ -107,7 +107,7 @@ __wt_evict_list_clear_page(WT_SESSION_IMPL *session, WT_REF *ref)
 		return;
 
 	cache = S2C(session)->cache;
-	__wt_fair_lock(session, &cache->evict_lock);
+	__wt_fs_lock(session, &cache->evict_lock);
 
 	elem = cache->evict_max;
 	for (i = 0, evict = cache->evict_queue; i < elem; i++, evict++)
@@ -118,7 +118,7 @@ __wt_evict_list_clear_page(WT_SESSION_IMPL *session, WT_REF *ref)
 
 	WT_ASSERT(session, !F_ISSET_ATOMIC(ref->page, WT_PAGE_EVICT_LRU));
 
-	__wt_fair_unlock(session, &cache->evict_lock);
+	__wt_fs_unlock(session, &cache->evict_lock);
 }
 
 /*
@@ -791,7 +791,7 @@ __wt_evict_file_exclusive_on(WT_SESSION_IMPL *session, bool *evict_resetp)
 	WT_ERR(__evict_request_walk_clear(session));
 
 	/* Hold the evict lock to remove any queued pages from this file. */
-	__wt_fair_lock(session, &cache->evict_lock);
+	__wt_fs_lock(session, &cache->evict_lock);
 
 	/*
 	 * The eviction candidate list might reference pages from the file,
@@ -801,7 +801,7 @@ __wt_evict_file_exclusive_on(WT_SESSION_IMPL *session, bool *evict_resetp)
 	for (i = 0, evict = cache->evict_queue; i < elem; i++, evict++)
 		if (evict->btree == btree)
 			__evict_list_clear(session, evict);
-	__wt_fair_unlock(session, &cache->evict_lock);
+	__wt_fs_unlock(session, &cache->evict_lock);
 
 	/*
 	 * We have disabled further eviction: wait for concurrent LRU eviction
@@ -871,7 +871,7 @@ __evict_lru_walk(WT_SESSION_IMPL *session)
 		return (ret == EBUSY ? 0 : ret);
 
 	/* Sort the list into LRU order and restart. */
-	__wt_fair_lock(session, &cache->evict_lock);
+	__wt_fs_lock(session, &cache->evict_lock);
 
 	entries = cache->evict_entries;
 	qsort(cache->evict_queue,
@@ -890,7 +890,7 @@ __evict_lru_walk(WT_SESSION_IMPL *session)
 		 */
 		cache->evict_candidates = 0;
 		cache->evict_current = NULL;
-		__wt_fair_unlock(session, &cache->evict_lock);
+		__wt_fs_unlock(session, &cache->evict_lock);
 		return (0);
 	}
 
@@ -934,7 +934,7 @@ __evict_lru_walk(WT_SESSION_IMPL *session)
 	}
 
 	cache->evict_current = cache->evict_queue;
-	__wt_fair_unlock(session, &cache->evict_lock);
+	__wt_fs_unlock(session, &cache->evict_lock);
 
 	/*
 	 * The eviction server thread doesn't do any actual eviction if there
@@ -1365,17 +1365,12 @@ __evict_get_ref(
 	*btreep = NULL;
 	*refp = NULL;
 
-	/*
-	 * Avoid the LRU lock if no pages are available.  If there are pages
-	 * available, get the lock.  If this function returns
-	 * without getting a page to evict, application threads assume there
-	 * are no more pages available and will attempt to wake the eviction
-	 * server.
+	/* Avoid the LRU lock if no pages are available.
 	 */
-	if (cache->evict_current == NULL)
+	if(cache->evict_current == NULL)
 		goto done_ret;
 
-	__wt_fair_lock(session, &cache->evict_lock);
+	__wt_fs_lock(session, &cache->evict_lock);
 
 	/*
 	 * The eviction server only tries to evict half of the pages before
@@ -1424,7 +1419,7 @@ __evict_get_ref(
 	/* Clear the current pointer if there are no more candidates. */
 	if (evict >= cache->evict_queue + cache->evict_candidates)
 		cache->evict_current = NULL;
-	__wt_fair_unlock(session, &cache->evict_lock);
+	__wt_fs_unlock(session, &cache->evict_lock);
 
 done_ret:
 	WT_END_FUNC(session);

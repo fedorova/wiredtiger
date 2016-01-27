@@ -176,6 +176,8 @@ struct __wt_fair_lock;
     typedef struct __wt_fair_lock WT_FAIR_LOCK;
 struct __wt_fh;
     typedef struct __wt_fh WT_FH;
+struct __wt_fs_lock;
+    typedef struct __wt_fs_lock WT_FS_LOCK;
 struct __wt_hazard;
     typedef struct __wt_hazard WT_HAZARD;
 struct __wt_ikey;

@@ -61,8 +61,10 @@ struct __wt_fair_lock {
 	union {
 		uint32_t lock;
 		struct {
-			uint16_t owner;		/* Ticket for current owner */
-			uint16_t waiter;	/* Last allocated ticket */
+                        /* Ticket for current owner */
+			uint16_t owner;
+                        /* Last allocated ticket */
+			uint16_t waiter;
 		} s;
 	} u;
 #define	fair_lock_owner u.s.owner
@@ -104,3 +106,12 @@ struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_spinlock {
 #error Unknown spinlock type
 
 #endif
+
+struct __wt_fs_lock {
+	struct __wt_fair_lock fast;
+	pthread_cond_t cond;
+	pthread_mutex_t mtx;
+	int num_sleeps;
+	int num_sleepers;
+	int num_wakes;
+};
