@@ -107,7 +107,7 @@ __wt_evict_list_clear_page(WT_SESSION_IMPL *session, WT_REF *ref)
 		return;
 
 	cache = S2C(session)->cache;
-	__wt_fs_lock(session, &cache->evict_lock);
+	__wt_fs_lock(session, &cache->evict_lock, &session->evictlock_whandle);
 
 	elem = cache->evict_max;
 	for (i = 0, evict = cache->evict_queue; i < elem; i++, evict++)
@@ -791,7 +791,7 @@ __wt_evict_file_exclusive_on(WT_SESSION_IMPL *session, bool *evict_resetp)
 	WT_ERR(__evict_request_walk_clear(session));
 
 	/* Hold the evict lock to remove any queued pages from this file. */
-	__wt_fs_lock(session, &cache->evict_lock);
+	__wt_fs_lock(session, &cache->evict_lock, &session->evictlock_whandle);
 
 	/*
 	 * The eviction candidate list might reference pages from the file,
@@ -871,7 +871,7 @@ __evict_lru_walk(WT_SESSION_IMPL *session)
 		return (ret == EBUSY ? 0 : ret);
 
 	/* Sort the list into LRU order and restart. */
-	__wt_fs_lock(session, &cache->evict_lock);
+	__wt_fs_lock(session, &cache->evict_lock, &session->evictlock_whandle);
 
 	entries = cache->evict_entries;
 	qsort(cache->evict_queue,
@@ -1370,7 +1370,7 @@ __evict_get_ref(
 	if(cache->evict_current == NULL)
 		goto done_ret;
 
-	__wt_fs_lock(session, &cache->evict_lock);
+	__wt_fs_lock(session, &cache->evict_lock, &session->evictlock_whandle);
 
 	/*
 	 * The eviction server only tries to evict half of the pages before

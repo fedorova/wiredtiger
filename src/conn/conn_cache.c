@@ -151,12 +151,10 @@ __wt_cache_create(WT_SESSION_IMPL *session, const char *cfg[])
 	    "cache eviction server", false, &cache->evict_cond));
 	WT_ERR(__wt_cond_alloc(session,
 	    "eviction waiters", false, &cache->evict_waiter_cond));
-	WT_ERR(__wt_spin_init(session, &cache->evict_lock.fast,
-			      "cache eviction lock: fairlock"));
-
-	WT_ERR(pthread_cond_init(&cache->evict_lock.cond, NULL));
-	WT_ERR(pthread_mutex_init(&cache->evict_lock.mtx, NULL));
 	WT_ERR(__wt_spin_init(session, &cache->evict_walk_lock, "cache walk"));
+
+	WT_ERR(__wt_fs_init(session, &cache->evict_lock,
+			    "cache eviction lock: fairlock"));
 
 	/* Allocate the LRU eviction queue. */
 	cache->evict_slots = WT_EVICT_WALK_BASE + WT_EVICT_WALK_INCR;

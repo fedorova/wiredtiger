@@ -194,4 +194,5 @@ struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_session_impl {
 #ifdef HAVE_TIMING
 	FILE      *timing_log;         /* A file for timestamp logs */
 #endif
+	WT_FS_WHANDLE evictlock_whandle; /* Evict lock's per-session handle. */
 };

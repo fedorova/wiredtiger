@@ -1398,6 +1398,11 @@ __open_session(WT_CONNECTION_IMPL *conn,
 
 	session_ret->name = NULL;
 
+	/* Initialize the per-session wait handle used by the fast-slow eviction
+	 * lock.
+	 */
+	WT_ERR(__wt_fs_whandle_init(&session_ret->evictlock_whandle));
+
 #ifdef HAVE_TIMING
 	/* Create the per-sesion file to log timing instrumentation. */
 	{
