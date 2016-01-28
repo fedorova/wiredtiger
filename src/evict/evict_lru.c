@@ -871,7 +871,8 @@ __evict_lru_walk(WT_SESSION_IMPL *session)
 		return (ret == EBUSY ? 0 : ret);
 
 	/* Sort the list into LRU order and restart. */
-	__wt_fs_lock(session, &cache->evict_lock, &session->evictlock_whandle);
+	__wt_fs_lock(session, &cache->evict_lock,
+		     &session->evictlock_whandle);
 
 	entries = cache->evict_entries;
 	qsort(cache->evict_queue,

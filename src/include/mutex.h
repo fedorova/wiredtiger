@@ -71,26 +71,6 @@ struct __wt_fair_lock {
 #define	fair_lock_waiter u.s.waiter
 };
 
-struct __wt_fs_whandle {
-	uint16_t ticket;
-	pthread_mutex_t mutex;
-	pthread_cond_t condvar;
-	struct __wt_fs_whandle *next;
-};
-
-struct __wt_fs_whead {
-	struct __wt_fair_lock lk;
-	struct __wt_fs_whandle *first_waiter;
-};
-
-struct __wt_fs_lock {
-	struct __wt_fair_lock fast;
-	const char *name;
-	size_t waiters_size;
-	struct __wt_fs_whead *waiter_htable;
-};
-
-
 /*
  * Spin locks:
  *
@@ -127,3 +107,23 @@ struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_spinlock {
 
 #endif
 
+/* A fast-slow lock */
+
+struct __wt_fs_whandle {
+	uint16_t ticket;
+	pthread_mutex_t mutex;
+	pthread_cond_t condvar;
+	struct __wt_fs_whandle *next;
+};
+
+struct __wt_fs_whead {
+	struct __wt_fair_lock lk;
+	struct __wt_fs_whandle *first_waiter;
+};
+
+struct __wt_fs_lock {
+	struct __wt_fair_lock fast;
+	const char *name;
+	size_t waiters_size;
+	struct __wt_fs_whead *waiter_htable;
+};

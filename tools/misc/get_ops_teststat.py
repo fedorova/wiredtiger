@@ -10,7 +10,7 @@ def parse_file(fname, pattern, printThreadNum):
     try:
         fd = open(fname, "r");
     except:
-        print "Could not open file " + fname;
+        print "Could not open file: " + fname;
         return;
 
     # Regex for the number of threads
