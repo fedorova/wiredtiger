@@ -426,6 +426,7 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 {
 	int my_slot;
 	WT_FS_WHEAD *slot_head;
+	WT_FS_WHANDLE *wh, *wh_prev = NULL;
 
 #if PRINT
 	printf("[%d]: tic %d maybe sleep\n", session->id, ticket);
@@ -457,15 +458,41 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 #endif
 		pthread_cond_wait(&whandle->condvar, &whandle->mutex);
 	}
-#if PRINT
 	else
+	{
+#if PRINT
 		printf("[%d]: tic %d DID NOT sleep\n", session->id, ticket);
 #endif
-
+	}
 	/* We don't recheck the condition upon awakening. Once the lock owner's
 	 * number got close to us, it cannot go back to being far.
 	 */
 	pthread_mutex_unlock(&whandle->mutex);
+
+	/* Remove ourselves from the list */
+	__wt_fair_spinlock(session, &slot_head->lk);
+	for(wh = slot_head->first_waiter; wh != NULL; wh = wh->next)
+	{
+#if PRINT
+		printf("[%d]: removeloop: %p, %p, %d \n", session->id,
+		       (void*)wh, (void*)wh->next, wh->ticket);
+#endif
+		if(wh != whandle)
+		{
+			wh_prev = wh;
+			continue;
+		}
+		else
+		{
+			if(wh_prev)
+				wh_prev->next = wh->next;
+			else
+				slot_head->first_waiter = wh->next;
+			whandle->next = NULL;
+			break;
+		}
+	}
+	__wt_fair_unlock(session, &slot_head->lk);
 }
 
 /*
@@ -478,7 +505,7 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 {
 	int waiter_slot;
 	WT_FS_WHEAD *slot_head;
-	WT_FS_WHANDLE *wh, *wh_prev = NULL, *wh_to_wake = NULL;
+	WT_FS_WHANDLE *wh;
 
 	WT_UNUSED(session);
 #if PRINT
@@ -496,7 +523,7 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 		return;
 	}
 
-	/* Lock the slot, find and remove our waiter */
+	/* Lock the slot, find our waiter */
 	__wt_fair_spinlock(session, &slot_head->lk);
 
 	for(wh = slot_head->first_waiter; wh != NULL; wh = wh->next)
@@ -506,38 +533,24 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 		       (void*)wh, (void*)wh->next, wh->ticket);
 #endif
 		if(wh->ticket != waiter_ticket)
-		{
-			wh_prev = wh;
 			continue;
-		}
 		else
 		{
-			wh_to_wake = wh;
-			if(wh_prev)
-				wh_prev->next = wh->next;
-			else
-				slot_head->first_waiter = wh->next;
-			wh_to_wake->next = NULL;
+			pthread_mutex_lock(&wh->mutex);
+			pthread_cond_signal(&wh->condvar);
+			pthread_mutex_unlock(&wh->mutex);
+#if PRINT
+			printf("[%d]: woke %d\n", session->id, waiter_ticket);
+#endif
 			break;
 		}
 	}
 	__wt_fair_unlock(session, &slot_head->lk);
 
-	/* Wake them up */
-	if(wh_to_wake != NULL)
-	{
-		pthread_mutex_lock(&wh_to_wake->mutex);
-		pthread_cond_signal(&wh_to_wake->condvar);
-		pthread_mutex_unlock(&wh_to_wake->mutex);
 #if PRINT
-		printf("[%d]: woke up %d\n", session->id, waiter_ticket);
-#endif
-	}
-#if PRINT
-	else
+	if(wh == NULL)
 		printf("[%d]: no waiters found\n", session->id);
 #endif
-
 }
 
 static inline int
