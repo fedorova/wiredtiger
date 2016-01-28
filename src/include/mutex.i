@@ -382,7 +382,7 @@ __wt_fair_islocked(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 /*
  * The Fast-Slow lock implementation.
  */
-#define PRINT 1
+#define PRINT 0
 static inline int
 __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 {
@@ -409,7 +409,7 @@ __wt_fs_whandle_init(WT_FS_WHANDLE *wh)
 	return 0;
 }
 
-#define WT_FS_MAXSPINNERS 4 /* Should be set close to the number of CPUs */
+#define WT_FS_MAXSPINNERS 24 /* Should be set close to the number of CPUs */
 
 #define WT_FS_NEXTWAKEE(owner_number)       owner_number + WT_FS_MAXSPINNERS
 
