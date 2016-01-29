@@ -126,4 +126,5 @@ struct __wt_fs_lock {
 	const char *name;
 	size_t waiters_size;
 	struct __wt_fs_whead *waiter_htable;
+	int num_sleepers;
 };
