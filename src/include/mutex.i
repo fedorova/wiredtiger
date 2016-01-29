@@ -382,7 +382,6 @@ __wt_fair_islocked(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 /*
  * The Fast-Slow lock implementation.
  */
-#define PRINT 1
 static inline int
 __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 {
@@ -394,6 +393,7 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 	WT_RET(__wt_calloc(session, lock->waiters_size,
 			   sizeof(WT_FS_WHEAD),
 			   &lock->waiter_htable));
+	setbuf(stdout, NULL);
 	return 0;
 }
 
@@ -411,7 +411,11 @@ __wt_fs_whandle_init(WT_FS_WHANDLE *wh)
 
 #define WT_FS_MAXSPINNERS 24 /* Should be set close to the number of CPUs */
 
-#define WT_FS_NEXTWAKEE(owner_number)       owner_number + WT_FS_MAXSPINNERS
+static inline uint16_t
+__fs_get_next_wakee(uint16_t owner_number)
+{
+	return (uint16_t)(owner_number + WT_FS_MAXSPINNERS);
+}
 
 #if 0
 static int sleepers = 0;
@@ -430,13 +434,13 @@ retry:
 }
 #endif
 
-static bool
+static inline bool
 __fs_should_wait(WT_FS_LOCK *lock, uint16_t ticket)
 {
-	return ((ticket - lock->fast.fair_lock_owner) < WT_FS_MAXSPINNERS)
-		? 0 : 1;
+	return ((uint16_t)(ticket - lock->fast.fair_lock_owner)
+		< WT_FS_MAXSPINNERS) ? 0 : 1;
 }
-static int __epoch = 0;
+
 static void
 __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 	WT_FS_WHANDLE *whandle)
@@ -445,9 +449,6 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 	WT_FS_WHEAD *slot_head;
 	WT_FS_WHANDLE *wh, *wh_prev = NULL;
 
-#if PRINT
-//	printf("[%d]: tic %d maybe sleep\n", session->id, ticket);
-#endif
 	/* Find my slot in the waiters array */
 	my_slot = ticket % lock->waiters_size;
 	slot_head = &lock->waiter_htable[my_slot];
@@ -469,18 +470,8 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 	 */
 	pthread_mutex_lock(&whandle->mutex);
 	if(__fs_should_wait(lock, ticket))
-	{
-#if PRINT
-		printf("[%d]: tic %d WILL SLEEP\n", session->id, ticket);
-#endif
 		pthread_cond_wait(&whandle->condvar, &whandle->mutex);
-	}
-	else
-	{
-#if PRINT
-		printf("[%d]: tic %d DID NOT sleep\n", session->id, ticket);
-#endif
-	}
+
 	/* We don't recheck the condition upon awakening. Once the lock owner's
 	 * number got close to us, it cannot go back to being far.
 	 */
@@ -490,10 +481,6 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 	__wt_fair_spinlock(session, &slot_head->lk);
 	for(wh = slot_head->first_waiter; wh != NULL; wh = wh->next)
 	{
-#if PRINT
-//		printf("[%d]: removeloop: %p, %p, %d \n", session->id,
-//		       (void*)wh, (void*)wh->next, wh->ticket);
-#endif
 		if(wh != whandle)
 		{
 			wh_prev = wh;
@@ -525,30 +512,19 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 	WT_FS_WHANDLE *wh;
 
 	WT_UNUSED(session);
-#if PRINT
-	printf("[%d]: to wake tic %d\n", session->id, waiter_ticket);
-#endif
+
 	/* Find the slot where our waiters is queued */
 	waiter_slot = waiter_ticket % lock->waiters_size;
 	slot_head = &lock->waiter_htable[waiter_slot];
 
 	if(slot_head->first_waiter == NULL)
-	{
-#if PRINT
-		printf("[%d]: early exit fswake\n", session->id);
-#endif
 		return;
-	}
 
 	/* Lock the slot, find our waiter */
 	__wt_fair_spinlock(session, &slot_head->lk);
 
 	for(wh = slot_head->first_waiter; wh != NULL; wh = wh->next)
 	{
-#if PRINT
-//		printf("[%d]: wakeloop: %p, %p, %d \n", session->id,
-//		       (void*)wh, (void*)wh->next, wh->ticket);
-#endif
 		if(wh->ticket != waiter_ticket)
 			continue;
 		else
@@ -556,18 +532,10 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 			pthread_mutex_lock(&wh->mutex);
 			pthread_cond_signal(&wh->condvar);
 			pthread_mutex_unlock(&wh->mutex);
-#if PRINT
-			printf("[%d]: woke %d\n", session->id, waiter_ticket);
-#endif
 			break;
 		}
 	}
 	__wt_fair_unlock(session, &slot_head->lk);
-
-#if PRINT
-	if(wh == NULL)
-		printf("[%d]: no waiters found\n", session->id);
-#endif
 }
 
 static inline int
@@ -582,9 +550,7 @@ __wt_fs_lock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, WT_FS_WHANDLE *whandle)
 	 * lock.
 	 */
 	ticket = __wt_atomic_fetch_add16(&lock->fast.fair_lock_waiter, 1);
-#if PRINT
-	printf("[%d]: lock--> %d\n", session->id, ticket);
-#endif
+
 retry:
 	while( ticket != lock->fast.fair_lock_owner &&
 	       !__fs_should_wait(lock, ticket))
@@ -597,21 +563,20 @@ retry:
 		__fs_maybewait(session, ticket, lock, whandle);
 		goto retry;
 	}
-#if PRINT
-	printf("[%d]: lock<-- %d\n", session->id, ticket);
-#endif
 	return 0;
 }
 
 static inline int
 __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 {
+	uint16_t ot = lock->fast.fair_lock_owner;
 	uint16_t wakee_ticket =
-		WT_FS_NEXTWAKEE(lock->fast.fair_lock_owner);
+		__fs_get_next_wakee(lock->fast.fair_lock_owner);
 
 	__wt_fair_unlock(session, &lock->fast);
 	WT_BARRIER();
 
 	__fs_wake_next_waiter(session, wakee_ticket, lock);
+
 	return 0;
 }
