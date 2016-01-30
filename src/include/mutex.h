@@ -116,13 +116,13 @@ struct __wt_fs_whandle {
 	struct __wt_fs_whandle *next;
 };
 
-struct __wt_fs_whead {
+struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_fs_whead {
 	struct __wt_fair_lock lk;
 	struct __wt_fs_whandle *first_waiter;
 };
 
 struct __wt_fs_lock {
-	struct __wt_fair_lock fast;
+	volatile struct __wt_fair_lock fast;
 	const char *name;
 	size_t waiters_size;
 	struct __wt_fs_whead *waiter_htable;

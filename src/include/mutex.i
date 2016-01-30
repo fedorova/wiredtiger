@@ -393,7 +393,8 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 	WT_RET(__wt_calloc(session, lock->waiters_size,
 			   sizeof(WT_FS_WHEAD),
 			   &lock->waiter_htable));
-	setbuf(stdout, NULL);
+	printf("%p %p\n", &lock->waiter_htable[1],
+	       &lock->waiter_htable[2]);
 	return 0;
 }
 
@@ -409,7 +410,7 @@ __wt_fs_whandle_init(WT_FS_WHANDLE *wh)
 	return 0;
 }
 
-#define WT_FS_MAXSPINNERS 24 /* Should be set close to the number of CPUs */
+#define WT_FS_MAXSPINNERS 10 /* Should be set close to the number of CPUs */
 
 static inline uint16_t
 __fs_get_next_wakee(uint16_t owner_number)
@@ -516,9 +517,6 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 	/* Find the slot where our waiters is queued */
 	waiter_slot = waiter_ticket % lock->waiters_size;
 	slot_head = &lock->waiter_htable[waiter_slot];
-
-	if(slot_head->first_waiter == NULL)
-		return;
 
 	/* Lock the slot, find our waiter */
 	__wt_fair_spinlock(session, &slot_head->lk);
