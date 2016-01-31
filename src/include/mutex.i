@@ -410,7 +410,7 @@ __wt_fs_whandle_init(WT_FS_WHANDLE *wh)
 	return 0;
 }
 
-#define WT_FS_MAXSPINNERS 10 /* Should be set close to the number of CPUs */
+#define WT_FS_MAXSPINNERS 24 /* Should be set close to the number of CPUs */
 
 static inline uint16_t
 __fs_get_next_wakee(uint16_t owner_number)
@@ -438,6 +438,7 @@ retry:
 static inline bool
 __fs_should_wait(WT_FS_LOCK *lock, uint16_t ticket)
 {
+	WT_BARRIER();
 	return ((uint16_t)(ticket - lock->fast.fair_lock_owner)
 		< WT_FS_MAXSPINNERS) ? 0 : 1;
 }
@@ -459,7 +460,7 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 
 	/* Lock the slot and insert ourselves at the front of the list */
 	__wt_fair_spinlock(session, &slot_head->lk);
-	whandle->next = slot_head->first_waiter;
+//	whandle->next = slot_head->first_waiter;
 	slot_head->first_waiter = whandle;
 	__wt_fair_unlock(session, &slot_head->lk);
 
@@ -480,6 +481,10 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 
 	/* Remove ourselves from the list */
 	__wt_fair_spinlock(session, &slot_head->lk);
+	slot_head->first_waiter = NULL;
+	__wt_fair_unlock(session, &slot_head->lk);
+#if 0
+	__wt_fair_spinlock(session, &slot_head->lk);
 	for(wh = slot_head->first_waiter; wh != NULL; wh = wh->next)
 	{
 		if(wh != whandle)
@@ -498,6 +503,7 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 		}
 	}
 	__wt_fair_unlock(session, &slot_head->lk);
+#endif
 }
 
 /*
@@ -510,7 +516,7 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 {
 	int waiter_slot;
 	WT_FS_WHEAD *slot_head;
-	WT_FS_WHANDLE *wh;
+	WT_FS_WHANDLE *wh = NULL;
 
 	WT_UNUSED(session);
 
@@ -520,7 +526,6 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 
 	/* Lock the slot, find our waiter */
 	__wt_fair_spinlock(session, &slot_head->lk);
-
 	for(wh = slot_head->first_waiter; wh != NULL; wh = wh->next)
 	{
 		if(wh->ticket != waiter_ticket)

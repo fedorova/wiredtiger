@@ -62,7 +62,7 @@ struct __wt_fair_lock {
 		uint32_t lock;
 		struct {
                         /* Ticket for current owner */
-			uint16_t owner;
+			volatile uint16_t owner;
                         /* Last allocated ticket */
 			uint16_t waiter;
 		} s;
@@ -118,11 +118,11 @@ struct __wt_fs_whandle {
 
 struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_fs_whead {
 	struct __wt_fair_lock lk;
-	struct __wt_fs_whandle *first_waiter;
+	struct __wt_fs_whandle * volatile first_waiter;
 };
 
 struct __wt_fs_lock {
-	volatile struct __wt_fair_lock fast;
+	struct __wt_fair_lock fast;
 	const char *name;
 	size_t waiters_size;
 	struct __wt_fs_whead *waiter_htable;
