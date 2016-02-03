@@ -29,7 +29,7 @@ __wt_log_ckpt(WT_SESSION_IMPL *session, WT_LSN *ckp_lsn)
 	log = conn->log;
 	log->ckpt_lsn = *ckp_lsn;
 	if (conn->log_cond != NULL)
-		WT_RET(__wt_cond_signal(session, conn->log_cond));
+		WT_RET(__wt_cond_signal(session, conn->log_cond, false));
 	return (0);
 }
 
@@ -83,7 +83,7 @@ __wt_log_background(WT_SESSION_IMPL *session, WT_LSN *lsn)
 	if (__wt_log_cmp(lsn, &log->bg_sync_lsn) > 0)
 		log->bg_sync_lsn = *lsn;
 	__wt_spin_unlock(session, &log->log_sync_lock);
-	return (__wt_cond_signal(session, conn->log_file_cond));
+	return (__wt_cond_signal(session, conn->log_file_cond, false));
 }
 
 /*
@@ -107,7 +107,7 @@ __wt_log_force_sync(WT_SESSION_IMPL *session, WT_LSN *min_lsn)
 	 */
 	while (log->sync_lsn.file < min_lsn->file) {
 		WT_ERR(__wt_cond_signal(session,
-		    S2C(session)->log_file_cond));
+					S2C(session)->log_file_cond, false));
 		WT_ERR(__wt_cond_wait(session, log->log_sync_cond, 10000));
 	}
 	__wt_spin_lock(session, &log->log_sync_lock);
@@ -134,7 +134,7 @@ __wt_log_force_sync(WT_SESSION_IMPL *session, WT_LSN *min_lsn)
 		WT_ERR(__wt_fsync(session, log->log_fh));
 		log->sync_lsn = *min_lsn;
 		WT_STAT_FAST_CONN_INCR(session, log_sync);
-		WT_ERR(__wt_cond_signal(session, log->log_sync_cond));
+		WT_ERR(__wt_cond_signal(session, log->log_sync_cond, false));
 	}
 err:
 	__wt_spin_unlock(session, &log->log_sync_lock);
@@ -812,7 +812,8 @@ __log_newfile(WT_SESSION_IMPL *session, bool conn_open, bool *created)
 			WT_STAT_FAST_CONN_INCR(session, log_prealloc_missed);
 			if (conn->log_cond != NULL)
 				WT_RET(__wt_cond_signal(
-				    session, conn->log_cond));
+					       session, conn->log_cond,
+					       false));
 		}
 	}
 	/*
@@ -1312,7 +1313,7 @@ __wt_log_release(WT_SESSION_IMPL *session, WT_LOGSLOT *slot, bool *freep)
 		 */
 		if (F_ISSET(session, WT_SESSION_LOCKED_SLOT))
 			__wt_spin_unlock(session, &log->log_slot_lock);
-		WT_ERR(__wt_cond_signal(session, conn->log_wrlsn_cond));
+		WT_ERR(__wt_cond_signal(session, conn->log_wrlsn_cond, false));
 		if (++yield_count < WT_THOUSAND)
 			__wt_yield(session);
 		else
@@ -1326,14 +1327,14 @@ __wt_log_release(WT_SESSION_IMPL *session, WT_LOGSLOT *slot, bool *freep)
 	log->write_lsn = slot->slot_end_lsn;
 
 	WT_ASSERT(session, slot != log->active_slot);
-	WT_ERR(__wt_cond_signal(session, log->log_write_cond));
+	WT_ERR(__wt_cond_signal(session, log->log_write_cond, false));
 	F_CLR(slot, WT_SLOT_FLUSH);
 
 	/*
 	 * Signal the close thread if needed.
 	 */
 	if (F_ISSET(slot, WT_SLOT_CLOSEFH))
-		WT_ERR(__wt_cond_signal(session, conn->log_file_cond));
+		WT_ERR(__wt_cond_signal(session, conn->log_file_cond, false));
 
 	/*
 	 * Try to consolidate calls to fsync to wait less.  Acquire a spin lock
@@ -1389,7 +1390,8 @@ __wt_log_release(WT_SESSION_IMPL *session, WT_LOGSLOT *slot, bool *freep)
 			WT_STAT_FAST_CONN_INCR(session, log_sync);
 			WT_ERR(__wt_fsync(session, log->log_fh));
 			log->sync_lsn = sync_lsn;
-			WT_ERR(__wt_cond_signal(session, log->log_sync_cond));
+			WT_ERR(__wt_cond_signal(session, log->log_sync_cond,
+				       false));
 		}
 		/*
 		 * Clear the flags before leaving the loop.
@@ -1931,7 +1933,8 @@ __log_write_internal(WT_SESSION_IMPL *session, WT_ITEM *record, WT_LSN *lsnp,
 		 * XXX I've seen times when conditions are NULL.
 		 */
 		if (conn->log_cond != NULL) {
-			WT_ERR(__wt_cond_signal(session, conn->log_cond));
+			WT_ERR(__wt_cond_signal(session, conn->log_cond,
+				       false));
 			__wt_yield(session);
 		} else
 			WT_ERR(__wt_log_force_write(session, 1));

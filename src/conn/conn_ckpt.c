@@ -205,7 +205,7 @@ __wt_checkpoint_server_destroy(WT_SESSION_IMPL *session)
 
 	F_CLR(conn, WT_CONN_SERVER_CHECKPOINT);
 	if (conn->ckpt_tid_set) {
-		WT_TRET(__wt_cond_signal(session, conn->ckpt_cond));
+		WT_TRET(__wt_cond_signal(session, conn->ckpt_cond, false));
 		WT_TRET(__wt_thread_join(session, conn->ckpt_tid));
 		conn->ckpt_tid_set = false;
 	}
@@ -245,7 +245,7 @@ __wt_checkpoint_signal(WT_SESSION_IMPL *session, wt_off_t logsize)
 	conn = S2C(session);
 	WT_ASSERT(session, WT_CKPT_LOGSIZE(conn));
 	if (logsize >= conn->ckpt_logsize && !conn->ckpt_signalled) {
-		WT_RET(__wt_cond_signal(session, conn->ckpt_cond));
+		WT_RET(__wt_cond_signal(session, conn->ckpt_cond, false));
 		conn->ckpt_signalled = 1;
 	}
 	return (0);

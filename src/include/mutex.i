@@ -299,8 +299,7 @@ __wt_fair_lock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 	uint16_t ticket;
 	int pause_cnt;
 
-	WT_UNUSED(session);
-
+	WT_BEGIN_FUNC(session);
 	/*
 	 * Possibly wrap: if we have more than 64K lockers waiting, the ticket
 	 * value will wrap and two lockers will simultaneously be granted the
@@ -319,6 +318,7 @@ __wt_fair_lock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 		else
 			__wt_yield(session);
 	}
+	WT_END_FUNC(session);
 
 	return (0);
 }
@@ -333,7 +333,7 @@ __wt_fair_spinlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 	uint16_t ticket;
 	int pause_cnt;
 
-	WT_UNUSED(session);
+	WT_BEGIN_FUNC(session);
 
 	/*
 	 * Possibly wrap: if we have more than 64K lockers waiting, the ticket
@@ -344,6 +344,7 @@ __wt_fair_spinlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 	while (ticket != lock->fair_lock_owner)
 		WT_PAUSE();
 
+	WT_END_FUNC(session);
 	return (0);
 }
 
@@ -399,18 +400,18 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 }
 
 static inline int
-__wt_fs_whandle_init(WT_FS_WHANDLE *wh)
+__wt_fs_whandle_init(WT_SESSION_IMPL *session, WT_FS_WHANDLE *wh)
 {
-	WT_RET(pthread_mutex_init(&wh->mutex, NULL));
-	WT_RET(pthread_cond_init(&wh->condvar, NULL));
-
+	WT_RET(__wt_cond_alloc(session,
+			       "eviction wait handle", false,
+			       &wh->wh_cond));
 	wh->ticket = 0;
 	wh->next = NULL;
 
 	return 0;
 }
 
-#define WT_FS_MAXSPINNERS 24 /* Should be set close to the number of CPUs */
+#define WT_FS_MAXSPINNERS 23 /* Should be set close to the number of CPUs */
 
 static inline uint16_t
 __fs_get_next_wakee(uint16_t owner_number)
@@ -418,27 +419,9 @@ __fs_get_next_wakee(uint16_t owner_number)
 	return (uint16_t)(owner_number + WT_FS_MAXSPINNERS);
 }
 
-#if 0
-static int sleepers = 0;
-static inline int
-__fs_update_sleepers(int delta)
-{
-	int old, new;
-retry:
-	old = sleepers;
-	new = old + delta;
-
-	if(!WT_ATOMIC_CAS(&sleepers, old, new))
-		goto retry;
-
-	return new;
-}
-#endif
-
 static inline bool
 __fs_should_wait(WT_FS_LOCK *lock, uint16_t ticket)
 {
-	WT_BARRIER();
 	return ((uint16_t)(ticket - lock->fast.fair_lock_owner)
 		< WT_FS_MAXSPINNERS) ? 0 : 1;
 }
@@ -449,7 +432,9 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 {
 	int my_slot;
 	WT_FS_WHEAD *slot_head;
-	WT_FS_WHANDLE *wh, *wh_prev = NULL;
+	WT_FS_WHANDLE *wh = NULL, *wh_prev = NULL;
+
+	WT_BEGIN_FUNC(session);
 
 	/* Find my slot in the waiters array */
 	my_slot = ticket % lock->waiters_size;
@@ -460,30 +445,26 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 
 	/* Lock the slot and insert ourselves at the front of the list */
 	__wt_fair_spinlock(session, &slot_head->lk);
-//	whandle->next = slot_head->first_waiter;
+	whandle->next = slot_head->first_waiter;
 	slot_head->first_waiter = whandle;
 	__wt_fair_unlock(session, &slot_head->lk);
 
-	/* Now we are going to sleep until the number of the current lock owner
-	 * comes close enough to our ticket. After we grab the lock associated
-	 * with the condition variable on which we will sleep, we need to check
-	 * if the lock owner number is already close enough. If so, we don't
-	 * sleep.
+        /* Grab the lock, theck the condition, and atomically
+	 * go to sleep if it is true.
 	 */
-	pthread_mutex_lock(&whandle->mutex);
+	__wt_spin_lock(session, (WT_SPINLOCK*)&whandle->wh_cond->mtx);
 	if(__fs_should_wait(lock, ticket))
-		pthread_cond_wait(&whandle->condvar, &whandle->mutex);
+	{
+		bool signalled;
+		__wt_cond_wait_signal(session, whandle->wh_cond,
+				      0, &signalled, true /*locked*/);
+	}
+	__wt_spin_unlock(session, (WT_SPINLOCK*)&whandle->wh_cond->mtx);
 
 	/* We don't recheck the condition upon awakening. Once the lock owner's
 	 * number got close to us, it cannot go back to being far.
+	 * Remove ourselves from the list.
 	 */
-	pthread_mutex_unlock(&whandle->mutex);
-
-	/* Remove ourselves from the list */
-	__wt_fair_spinlock(session, &slot_head->lk);
-	slot_head->first_waiter = NULL;
-	__wt_fair_unlock(session, &slot_head->lk);
-#if 0
 	__wt_fair_spinlock(session, &slot_head->lk);
 	for(wh = slot_head->first_waiter; wh != NULL; wh = wh->next)
 	{
@@ -503,7 +484,7 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 		}
 	}
 	__wt_fair_unlock(session, &slot_head->lk);
-#endif
+	WT_END_FUNC(session);
 }
 
 /*
@@ -518,7 +499,7 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 	WT_FS_WHEAD *slot_head;
 	WT_FS_WHANDLE *wh = NULL;
 
-	WT_UNUSED(session);
+	WT_BEGIN_FUNC(session);
 
 	/* Find the slot where our waiters is queued */
 	waiter_slot = waiter_ticket % lock->waiters_size;
@@ -532,13 +513,12 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 			continue;
 		else
 		{
-			pthread_mutex_lock(&wh->mutex);
-			pthread_cond_signal(&wh->condvar);
-			pthread_mutex_unlock(&wh->mutex);
+			__wt_cond_signal(session, wh->wh_cond, false);
 			break;
 		}
 	}
 	__wt_fair_unlock(session, &slot_head->lk);
+	WT_END_FUNC(session);
 }
 
 static inline int
@@ -547,6 +527,7 @@ __wt_fs_lock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, WT_FS_WHANDLE *whandle)
 	uint16_t ticket;
 	int pause_cnt;
 
+	WT_BEGIN_FUNC(session);
 	/*
 	 * Possibly wrap: if we have more than 64K lockers waiting, the ticket
 	 * value will wrap and two lockers will simultaneously be granted the
@@ -560,12 +541,14 @@ retry:
 		WT_PAUSE();
 
 	if(ticket == lock->fast.fair_lock_owner)
-		return 0;
+		goto done;
 	else
 	{
 		__fs_maybewait(session, ticket, lock, whandle);
 		goto retry;
 	}
+done:
+	WT_END_FUNC(session);
 	return 0;
 }
 
@@ -576,10 +559,12 @@ __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 	uint16_t wakee_ticket =
 		__fs_get_next_wakee(lock->fast.fair_lock_owner);
 
-	__wt_fair_unlock(session, &lock->fast);
-	WT_BARRIER();
+	WT_BEGIN_FUNC(session);
 
+	__wt_fair_unlock(session, &lock->fast);
 	__fs_wake_next_waiter(session, wakee_ticket, lock);
 
+	WT_END_FUNC(session);
 	return 0;
 }
+

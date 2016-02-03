@@ -148,7 +148,7 @@ __wt_evict_server_wake(WT_SESSION_IMPL *session)
 		    bytes_max / WT_MEGABYTE));
 	}
 
-	return (__wt_cond_signal(session, cache->evict_cond));
+	return (__wt_cond_signal(session, cache->evict_cond, false));
 }
 
 /*
@@ -390,7 +390,8 @@ __wt_evict_destroy(WT_SESSION_IMPL *session)
 	WT_TRET(__wt_verbose(
 	    session, WT_VERB_EVICTSERVER, "waiting for helper threads"));
 	for (i = 0; i < conn->evict_workers; i++) {
-		WT_TRET(__wt_cond_signal(session, cache->evict_waiter_cond));
+		WT_TRET(__wt_cond_signal(session,
+					 cache->evict_waiter_cond, false));
 		WT_TRET(__wt_thread_join(session, workers[i].tid));
 	}
 	conn->evict_workers = 0;
@@ -557,7 +558,8 @@ __evict_pass(WT_SESSION_IMPL *session)
 			F_CLR(cache, WT_CACHE_CLEAR_WALKS);
 			WT_RET(__evict_clear_walks(session));
 			WT_RET(__wt_cond_signal(
-			    session, cache->evict_waiter_cond));
+				       session, cache->evict_waiter_cond,
+				       false));
 		}
 
 		/*
@@ -941,7 +943,7 @@ __evict_lru_walk(WT_SESSION_IMPL *session)
 	 * The eviction server thread doesn't do any actual eviction if there
 	 * are multiple eviction workers running.
 	 */
-	WT_RET(__wt_cond_signal(session, cache->evict_waiter_cond));
+	WT_RET(__wt_cond_signal(session, cache->evict_waiter_cond, false));
 
 	return (0);
 }
