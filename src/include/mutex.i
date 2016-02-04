@@ -411,7 +411,7 @@ __wt_fs_whandle_init(WT_SESSION_IMPL *session, WT_FS_WHANDLE *wh)
 	return 0;
 }
 
-#define WT_FS_MAXSPINNERS 23 /* Should be set close to the number of CPUs */
+#define WT_FS_MAXSPINNERS 4 /* Should be set close to the number of CPUs */
 
 static inline uint16_t
 __fs_get_next_wakee(uint16_t owner_number)

@@ -2,6 +2,7 @@
 
 import sys
 import argparse
+import matplotlib.pyplot as plt
 
 #
 # LogRecord contains all the fields we expect in the log record.
@@ -37,9 +38,12 @@ class LockRecord:
 
 class PerfData:
 
-    def __init__(self):
+    def __init__(self, name, threadID):
+        self.name = name;
+        self.threadID = threadID;
         self.numCalls = 0;
         self.totalRunningTime = long(0);
+        self.runningTimes = [];
 
     def getAverage(self):
         return (float(self.totalRunningTime) / float(self.numCalls));
@@ -49,6 +53,15 @@ class PerfData:
         print("\t Total running time: " + str(self.totalRunningTime) + " ns.");
         print("\t Average running time: "
               + str(long(self.getAverage())) + " ns.");
+
+    def showHistogram(self):
+        plt.figure();
+        plt.hist(self.runningTimes, bins=50, log=True);
+        plt.title("Thread " + str(self.threadID) + ": " + self.name)
+        plt.xlabel("Running time (nanoseconds)")
+        plt.ylabel("Frequency")
+        filename = "t" + str(self.threadID) + "." + self.name + ".png";
+        plt.savefig(filename);
 
 #
 # LockData class contains information about lock-related functions
@@ -177,7 +190,7 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
 
     lockData = locksDictionary[lockName];
     lastAcquireRecord = lockData.lastAcquireRecord;
-    
+
     # If this is an acquire or trylock, simply update the stats in the
     # lockData object and remember the lastAcquire record, so we can
     # later match it with a corresponding lock release.
@@ -323,12 +336,13 @@ def parse_file(fname):
                     thisFileDict = perFile[fname];
 
                     if(not thisFileDict.has_key(stackRec.func)):
-                        newPDR = PerfData();
+                        newPDR = PerfData(stackRec.func, thread);
                         thisFileDict[stackRec.func] = newPDR;
 
                     pdr = thisFileDict[stackRec.func];
                     pdr.totalRunningTime = pdr.totalRunningTime + runningTime;
                     pdr.numCalls = pdr.numCalls + 1;
+                    pdr.runningTimes.append(runningTime);
                     found = True
 
                     # If this is a lock-related function, do lock-related
@@ -367,6 +381,7 @@ def main():
         for fkey, pdr in perFileDict.iteritems():
             print(fkey + ":");
             pdr.printSelf();
+            pdr.showHistogram();
 
         lockDataDict = perFileLocks[key];
 
