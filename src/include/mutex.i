@@ -394,8 +394,6 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 	WT_RET(__wt_calloc(session, lock->waiters_size,
 			   sizeof(WT_FS_WHEAD),
 			   &lock->waiter_htable));
-	printf("%p %p\n", &lock->waiter_htable[1],
-	       &lock->waiter_htable[2]);
 	return 0;
 }
 
@@ -411,7 +409,7 @@ __wt_fs_whandle_init(WT_SESSION_IMPL *session, WT_FS_WHANDLE *wh)
 	return 0;
 }
 
-#define WT_FS_MAXSPINNERS 4 /* Should be set close to the number of CPUs */
+#define WT_FS_MAXSPINNERS 3 /* Should be set close to the number of CPUs */
 
 static inline uint16_t
 __fs_get_next_wakee(uint16_t owner_number)
