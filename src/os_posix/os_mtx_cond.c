@@ -44,16 +44,22 @@ err:	__wt_free(session, cond);
  * __wt_cond_wait_signal --
  *	Wait on a mutex, optionally timing out.  If we get it
  *	before the time out period expires, let the caller know.
+ *      The locked flag tells us whether the associated mutex is
+ *      already locked.
  */
 int
 __wt_cond_wait_signal(
-    WT_SESSION_IMPL *session, WT_CONDVAR *cond, uint64_t usecs, bool *signalled)
+    WT_SESSION_IMPL *session, WT_CONDVAR *cond, uint64_t usecs,
+    bool *signalled, bool locked)
 {
 	struct timespec ts;
 	WT_DECL_RET;
-	bool locked;
+	bool unlock_here;
 
-	locked = false;
+	if(locked)
+		unlock_here = false;
+	else
+		unlock_here = true;
 
 	/* Fast path if already signalled. */
 	*signalled = true;
@@ -70,8 +76,11 @@ __wt_cond_wait_signal(
 		WT_STAT_FAST_CONN_INCR(session, cond_wait);
 	}
 
-	WT_ERR(pthread_mutex_lock(&cond->mtx));
-	locked = true;
+	if(!locked)
+	{
+		WT_ERR(pthread_mutex_lock(&cond->mtx));
+		unlock_here = true;
+	}
 
 	if (usecs > 0) {
 		WT_ERR(__wt_epoch(session, &ts));
@@ -98,7 +107,7 @@ __wt_cond_wait_signal(
 
 	(void)__wt_atomic_subi32(&cond->waiters, 1);
 
-err:	if (locked)
+err:	if (unlock_here)
 		WT_TRET(pthread_mutex_unlock(&cond->mtx));
 	if (ret == 0)
 		return (0);
