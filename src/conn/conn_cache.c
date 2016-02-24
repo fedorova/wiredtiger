@@ -146,9 +146,12 @@ __wt_cache_create(WT_SESSION_IMPL *session, const char *cfg[])
 	if (cache->eviction_target >= cache->eviction_trigger)
 		WT_ERR_MSG(session, EINVAL,
 		    "eviction target must be lower than the eviction trigger");
-
+#ifdef FSLOCK
 	WT_ERR(__wt_fs_init(session, &cache->evict_lock,
 			    "cache eviction lock: fairlock"));
+#else
+	WT_ERR(__wt_spin_init(session, &cache->evict_lock, "cache eviction"));
+#endif
 	WT_ERR(__wt_cond_alloc(session,
 	    "cache eviction server", false, &cache->evict_cond));
 	WT_ERR(__wt_cond_alloc(session,

@@ -83,7 +83,11 @@ struct __wt_cache {
 	 * Eviction thread information.
 	 */
 	WT_CONDVAR *evict_cond;		/* Eviction server condition */
+#ifdef FSLOCK
 	WT_FS_LOCK evict_lock;	        /* Eviction LRU queue */
+#else
+	WT_SPINLOCK evict_lock;         /* Eviction LRU queue */
+#endif
 	WT_SPINLOCK evict_walk_lock;	/* Eviction walk location */
 	/* Condition signalled when the eviction server populates the queue */
 	WT_CONDVAR *evict_waiter_cond;
