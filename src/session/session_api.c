@@ -1147,7 +1147,7 @@ __session_transaction_sync(WT_SESSION *wt_session, const char *config)
 	 * our timeout.
 	 */
 	while (__wt_log_cmp(&session->bg_sync_lsn, &log->sync_lsn) > 0) {
-		WT_ERR(__wt_cond_signal(session, conn->log_file_cond));
+		WT_ERR(__wt_cond_signal(session, conn->log_file_cond, false));
 		WT_ERR(__wt_epoch(session, &now));
 		waited_ms = WT_TIMEDIFF_MS(now, start);
 		if (forever || waited_ms < timeout_ms)
@@ -1418,7 +1418,7 @@ __open_session(WT_CONNECTION_IMPL *conn,
 	 * Initialize the per-session wait handle used by the fast-slow eviction
 	 * lock.
 	 */
-	WT_ERR(__wt_fs_whandle_init(&session_ret->evictlock_whandle));
+	WT_ERR(__wt_fs_whandle_init(session, &session_ret->evictlock_whandle));
 
 	/*
 	 * Publish: make the entry visible to server threads.  There must be a

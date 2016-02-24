@@ -408,7 +408,7 @@ __wt_sweep_destroy(WT_SESSION_IMPL *session)
 
 	F_CLR(conn, WT_CONN_SERVER_SWEEP);
 	if (conn->sweep_tid_set) {
-		WT_TRET(__wt_cond_signal(session, conn->sweep_cond));
+		WT_TRET(__wt_cond_signal(session, conn->sweep_cond, false));
 		WT_TRET(__wt_thread_join(session, conn->sweep_tid));
 		conn->sweep_tid_set = 0;
 	}

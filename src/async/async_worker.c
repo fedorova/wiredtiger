@@ -328,7 +328,8 @@ __wt_async_worker(void *arg)
 				WT_PUBLISH(async->flush_state,
 				    WT_ASYNC_FLUSH_COMPLETE);
 				WT_ERR(__wt_cond_signal(session,
-				    async->flush_cond));
+							async->flush_cond,
+							false));
 			} else
 				/*
 				 * We need to wait for the last worker to

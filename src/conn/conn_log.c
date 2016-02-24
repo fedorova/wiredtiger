@@ -409,7 +409,8 @@ __log_file_server(void *arg)
 				    &close_end_lsn, &log->sync_lsn) >= 0);
 				log->sync_lsn = close_end_lsn;
 				WT_ERR(__wt_cond_signal(
-				    session, log->log_sync_cond));
+					       session,
+					       log->log_sync_cond, false));
 				locked = false;
 				__wt_spin_unlock(session, &log->log_sync_lock);
 			}
@@ -457,13 +458,16 @@ __log_file_server(void *arg)
 					    min_lsn.file == log->sync_lsn.file);
 					log->sync_lsn = min_lsn;
 					WT_ERR(__wt_cond_signal(
-					    session, log->log_sync_cond));
+						       session,
+						       log->log_sync_cond,
+						       false));
 				}
 				locked = false;
 				__wt_spin_unlock(session, &log->log_sync_lock);
 			} else {
 				WT_ERR(__wt_cond_signal(
-				    session, conn->log_wrlsn_cond));
+					       session,
+					       conn->log_wrlsn_cond, false));
 				/*
 				 * We do not want to wait potentially a second
 				 * to process this.  Yield to give the wrlsn
@@ -634,14 +638,17 @@ restart:
 				log->write_start_lsn = slot->slot_start_lsn;
 				log->write_lsn = slot->slot_end_lsn;
 				WT_ERR(__wt_cond_signal(
-				    session, log->log_write_cond));
+					       session,
+					       log->log_write_cond, false));
 				WT_STAT_FAST_CONN_INCR(session, log_write_lsn);
 				/*
 				 * Signal the close thread if needed.
 				 */
 				if (F_ISSET(slot, WT_SLOT_CLOSEFH))
 					WT_ERR(__wt_cond_signal(
-					    session, conn->log_file_cond));
+						       session,
+						       conn->log_file_cond,
+						       false));
 			}
 			__wt_log_slot_free(session, slot);
 		}
@@ -763,7 +770,8 @@ __log_server(void *arg)
 
 		/* Wait until the next event. */
 		WT_ERR(__wt_cond_wait_signal(session, conn->log_cond,
-		    WT_MILLION / WT_FORCE_PER_SECOND, &signalled));
+					     WT_MILLION / WT_FORCE_PER_SECOND,
+					     &signalled, 0));
 	}
 
 	if (0) {
@@ -887,7 +895,7 @@ __wt_logmgr_open(WT_SESSION_IMPL *session)
 	if (conn->log_session != NULL) {
 		WT_ASSERT(session, conn->log_cond != NULL);
 		WT_ASSERT(session, conn->log_tid_set == true);
-		WT_RET(__wt_cond_signal(session, conn->log_cond));
+		WT_RET(__wt_cond_signal(session, conn->log_cond, false));
 	} else {
 		/* The log server gets its own session. */
 		WT_RET(__wt_open_internal_session(conn,
@@ -929,12 +937,12 @@ __wt_logmgr_destroy(WT_SESSION_IMPL *session)
 		return (0);
 	}
 	if (conn->log_tid_set) {
-		WT_TRET(__wt_cond_signal(session, conn->log_cond));
+		WT_TRET(__wt_cond_signal(session, conn->log_cond, false));
 		WT_TRET(__wt_thread_join(session, conn->log_tid));
 		conn->log_tid_set = false;
 	}
 	if (conn->log_file_tid_set) {
-		WT_TRET(__wt_cond_signal(session, conn->log_file_cond));
+		WT_TRET(__wt_cond_signal(session, conn->log_file_cond, false));
 		WT_TRET(__wt_thread_join(session, conn->log_file_tid));
 		conn->log_file_tid_set = false;
 	}
@@ -944,7 +952,7 @@ __wt_logmgr_destroy(WT_SESSION_IMPL *session)
 		conn->log_file_session = NULL;
 	}
 	if (conn->log_wrlsn_tid_set) {
-		WT_TRET(__wt_cond_signal(session, conn->log_wrlsn_cond));
+		WT_TRET(__wt_cond_signal(session, conn->log_wrlsn_cond, false));
 		WT_TRET(__wt_thread_join(session, conn->log_wrlsn_tid));
 		conn->log_wrlsn_tid_set = false;
 	}

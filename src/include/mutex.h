@@ -11,13 +11,13 @@
  *
  * WiredTiger uses condition variables to signal between threads, and for
  * locking operations that are expected to block.
+ * !!! For timing instrumentation to work, we require that the mutex is
+ * followed by the name pointer.
  */
 struct __wt_condvar {
-	const char *name;		/* Mutex name for debugging */
-
 	wt_mutex_t mtx;			/* Mutex */
+	const char *name;		/* Mutex name for debugging */
 	wt_cond_t  cond;		/* Condition variable */
-
 	int waiters;			/* Numbers of waiters, or
 					   -1 if signalled with no waiters. */
 };
@@ -111,8 +111,7 @@ struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_spinlock {
 
 struct __wt_fs_whandle {
 	uint16_t ticket;
-	pthread_mutex_t mutex;
-	pthread_cond_t condvar;
+	WT_CONDVAR *wh_cond;
 	struct __wt_fs_whandle *next;
 };
 

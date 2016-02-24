@@ -352,7 +352,7 @@ __lsm_manager_worker_shutdown(WT_SESSION_IMPL *session)
 	 */
 	for (i = 1; i < manager->lsm_workers; i++) {
 		WT_ASSERT(session, manager->lsm_worker_cookies[i].tid != 0);
-		WT_TRET(__wt_cond_signal(session, manager->work_cond));
+		WT_TRET(__wt_cond_signal(session, manager->work_cond, false));
 		WT_TRET(__wt_thread_join(
 		    session, manager->lsm_worker_cookies[i].tid));
 	}
@@ -665,7 +665,7 @@ __wt_lsm_manager_push_entry(WT_SESSION_IMPL *session,
 		    &manager->app_lock, lsm_work_queue_app);
 	pushed = true;
 
-	WT_ERR(__wt_cond_signal(session, manager->work_cond));
+	WT_ERR(__wt_cond_signal(session, manager->work_cond, false));
 	return (0);
 err:
 	if (!pushed)

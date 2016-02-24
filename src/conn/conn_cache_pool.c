@@ -214,7 +214,9 @@ __wt_cache_pool_config(WT_SESSION_IMPL *session, const char **cfg)
 	/* Wake up the cache pool server so any changes are noticed. */
 	if (updating)
 		WT_ERR(__wt_cond_signal(
-		    session, __wt_process.cache_pool->cache_pool_cond));
+			       session,
+			       __wt_process.cache_pool->cache_pool_cond,
+			       false));
 
 	WT_ERR(__wt_verbose(session, WT_VERB_SHARED_CACHE,
 	    "Configured cache pool %s. Size: %" PRIu64
@@ -283,7 +285,7 @@ __wt_conn_cache_pool_open(WT_SESSION_IMPL *session)
 	    __wt_cache_pool_server, cache->cp_session));
 
 	/* Wake up the cache pool server to get our initial chunk. */
-	WT_RET(__wt_cond_signal(session, cp->cache_pool_cond));
+	WT_RET(__wt_cond_signal(session, cp->cache_pool_cond, false));
 
 	return (0);
 }
@@ -341,7 +343,7 @@ __wt_conn_cache_pool_destroy(WT_SESSION_IMPL *session)
 		cp_locked = false;
 
 		F_CLR(cache, WT_CACHE_POOL_RUN);
-		WT_TRET(__wt_cond_signal(session, cp->cache_pool_cond));
+		WT_TRET(__wt_cond_signal(session, cp->cache_pool_cond, false));
 		WT_TRET(__wt_thread_join(session, cache->cp_tid));
 
 		wt_session = &cache->cp_session->iface;

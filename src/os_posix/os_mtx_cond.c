@@ -56,6 +56,8 @@ __wt_cond_wait_signal(
 	WT_DECL_RET;
 	bool unlock_here;
 
+	WT_BEGIN_FUNC(session);
+
 	if(locked)
 		unlock_here = false;
 	else
@@ -109,6 +111,7 @@ __wt_cond_wait_signal(
 
 err:	if (unlock_here)
 		WT_TRET(pthread_mutex_unlock(&cond->mtx));
+	WT_END_FUNC(session);
 	if (ret == 0)
 		return (0);
 	WT_RET_MSG(session, ret, "pthread_cond_wait");
@@ -119,13 +122,13 @@ err:	if (unlock_here)
  *	Signal a waiting thread.
  */
 int
-__wt_cond_signal(WT_SESSION_IMPL *session, WT_CONDVAR *cond)
+__wt_cond_signal(WT_SESSION_IMPL *session, WT_CONDVAR *cond, bool locked)
 {
 	WT_DECL_RET;
-	bool locked;
+	bool unlock_here;
 
-	locked = false;
-
+	WT_BEGIN_FUNC(session);
+	unlock_here = false;
 	/*
 	 * !!!
 	 * This function MUST handle a NULL session handle.
@@ -139,13 +142,17 @@ __wt_cond_signal(WT_SESSION_IMPL *session, WT_CONDVAR *cond)
 		return (0);
 
 	if (cond->waiters > 0 || !__wt_atomic_casi32(&cond->waiters, 0, -1)) {
-		WT_ERR(pthread_mutex_lock(&cond->mtx));
-		locked = true;
+		if(!locked)
+		{
+			WT_ERR(pthread_mutex_lock(&cond->mtx));
+			unlock_here = true;
+		}
 		WT_ERR(pthread_cond_broadcast(&cond->cond));
 	}
 
-err:	if (locked)
+err:	if (unlock_here)
 		WT_TRET(pthread_mutex_unlock(&cond->mtx));
+	WT_END_FUNC(session);
 	if (ret == 0)
 		return (0);
 	WT_RET_MSG(session, ret, "pthread_cond_broadcast");
