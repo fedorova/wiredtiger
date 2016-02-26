@@ -356,13 +356,12 @@ __wt_fair_spinlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 static inline int
 __wt_fair_unlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 {
-	WT_UNUSED(session);
-
+	WT_BEGIN_FUNC(session);
 	/*
 	 * We have exclusive access - the update does not need to be atomic.
 	 */
 	++lock->fair_lock_owner;
-
+	WT_END_FUNC(session);
 	return (0);
 }
 
@@ -394,6 +393,7 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 	WT_RET(__wt_calloc(session, lock->waiters_size,
 			   sizeof(WT_FS_WHEAD),
 			   &lock->waiter_htable));
+	printf("Using fslock\n");
 	return 0;
 }
 
@@ -409,7 +409,7 @@ __wt_fs_whandle_init(WT_SESSION_IMPL *session, WT_FS_WHANDLE *wh)
 	return 0;
 }
 
-#define WT_FS_MAXSPINNERS 3 /* Should be set close to the number of CPUs */
+#define WT_FS_MAXSPINNERS 4 /* Should be set close to the number of CPUs */
 
 static inline uint16_t
 __fs_get_next_wakee(uint16_t owner_number)
