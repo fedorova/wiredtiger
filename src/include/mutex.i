@@ -91,7 +91,6 @@ __wt_spin_lock(WT_SESSION_IMPL *session, WT_SPINLOCK *t)
 static inline void
 __wt_spin_unlock(WT_SESSION_IMPL *session, WT_SPINLOCK *t)
 {
-	WT_UNUSED(session);
 	WT_BEGIN_SPINLOCK(session, t);
 	__sync_lock_release(&t->lock);
 	WT_END_SPINLOCK(session, t);
@@ -274,8 +273,9 @@ static inline int
 __wt_fair_trylock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 {
 	WT_FAIR_LOCK new, old;
+	int ret;
 
-	WT_UNUSED(session);
+	WT_BEGIN_LOCK(session, lock);
 
 	old = new = *lock;
 
@@ -285,8 +285,11 @@ __wt_fair_trylock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 
 	/* The replacement lock value is a result of allocating a new ticket. */
 	++new.fair_lock_waiter;
-	return (__wt_atomic_cas32(
+	ret = (__wt_atomic_cas32(
 	    &lock->u.lock, old.u.lock, new.u.lock) ? 0 : EBUSY);
+
+	WT_END_LOCK(session, lock);
+	return ret;
 }
 
 /*
@@ -299,7 +302,7 @@ __wt_fair_lock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 	uint16_t ticket;
 	int pause_cnt;
 
-	WT_BEGIN_FUNC(session);
+	WT_BEGIN_LOCK(session, lock);
 	/*
 	 * Possibly wrap: if we have more than 64K lockers waiting, the ticket
 	 * value will wrap and two lockers will simultaneously be granted the
@@ -318,8 +321,7 @@ __wt_fair_lock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 		else
 			__wt_yield(session);
 	}
-	WT_END_FUNC(session);
-
+	WT_END_LOCK(session, lock);
 	return (0);
 }
 
@@ -333,7 +335,7 @@ __wt_fair_spinlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 	uint16_t ticket;
 	int pause_cnt;
 
-	WT_BEGIN_FUNC(session);
+	WT_BEGIN_LOCK(session, lock);
 
 	/*
 	 * Possibly wrap: if we have more than 64K lockers waiting, the ticket
@@ -344,7 +346,7 @@ __wt_fair_spinlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 	while (ticket != lock->fair_lock_owner)
 		WT_PAUSE();
 
-	WT_END_FUNC(session);
+	WT_END_LOCK(session, lock);
 	return (0);
 }
 
@@ -356,12 +358,12 @@ __wt_fair_spinlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 static inline int
 __wt_fair_unlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 {
-	WT_BEGIN_FUNC(session);
+	WT_BEGIN_LOCK(session, lock);
 	/*
 	 * We have exclusive access - the update does not need to be atomic.
 	 */
 	++lock->fair_lock_owner;
-	WT_END_FUNC(session);
+	WT_END_LOCK(session, lock);
 	return (0);
 }
 
@@ -382,6 +384,7 @@ __wt_fair_islocked(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 /*
  * The Fast-Slow lock implementation.
  */
+#define WT_FS_MAXSPINNERS 4 /* Should be set close to the number of CPUs */
 static inline int
 __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 {
@@ -393,7 +396,7 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 	WT_RET(__wt_calloc(session, lock->waiters_size,
 			   sizeof(WT_FS_WHEAD),
 			   &lock->waiter_htable));
-	printf("Using fslock\n");
+	printf("Using fslock with %d spinners\n", WT_FS_MAXSPINNERS);
 	return 0;
 }
 
@@ -408,8 +411,6 @@ __wt_fs_whandle_init(WT_SESSION_IMPL *session, WT_FS_WHANDLE *wh)
 
 	return 0;
 }
-
-#define WT_FS_MAXSPINNERS 4 /* Should be set close to the number of CPUs */
 
 static inline uint16_t
 __fs_get_next_wakee(uint16_t owner_number)
@@ -525,7 +526,7 @@ __wt_fs_lock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, WT_FS_WHANDLE *whandle)
 	uint16_t ticket;
 	int pause_cnt;
 
-	WT_BEGIN_FUNC(session);
+	WT_BEGIN_LOCK(session, lock);
 	/*
 	 * Possibly wrap: if we have more than 64K lockers waiting, the ticket
 	 * value will wrap and two lockers will simultaneously be granted the
@@ -546,7 +547,7 @@ retry:
 		goto retry;
 	}
 done:
-	WT_END_FUNC(session);
+	WT_END_LOCK(session, lock);
 	return 0;
 }
 
@@ -557,12 +558,12 @@ __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 	uint16_t wakee_ticket =
 		__fs_get_next_wakee(lock->fast.fair_lock_owner);
 
-	WT_BEGIN_FUNC(session);
+	WT_BEGIN_LOCK(session, lock);
 
 	__wt_fair_unlock(session, &lock->fast);
 	__fs_wake_next_waiter(session, wakee_ticket, lock);
 
-	WT_END_FUNC(session);
+	WT_END_LOCK(session, lock);
 	return 0;
 }
 

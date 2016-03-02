@@ -1406,6 +1406,7 @@ __evict_get_ref(
 
 	__wt_fs_lock(session, &cache->evict_lock, &session->evictlock_whandle);
 #else
+#if 0
 	for (;;) {
 		if (cache->evict_current == NULL)
 			return (WT_NOTFOUND);
@@ -1413,6 +1414,9 @@ __evict_get_ref(
 			break;
 		__wt_yield(session);
 	}
+#else
+	__wt_spin_lock(session, &cache->evict_lock);
+#endif
 #endif
 	/*
 	 * The eviction server only tries to evict half of the pages before

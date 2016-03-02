@@ -56,7 +56,7 @@ __wt_cond_wait_signal(
 	WT_DECL_RET;
 	bool unlock_here;
 
-	WT_BEGIN_FUNC(session);
+	WT_BEGIN_LOCK(session, cond);
 
 	if(locked)
 		unlock_here = false;
@@ -111,7 +111,7 @@ __wt_cond_wait_signal(
 
 err:	if (unlock_here)
 		WT_TRET(pthread_mutex_unlock(&cond->mtx));
-	WT_END_FUNC(session);
+	WT_END_LOCK(session, cond);
 	if (ret == 0)
 		return (0);
 	WT_RET_MSG(session, ret, "pthread_cond_wait");
@@ -127,7 +127,7 @@ __wt_cond_signal(WT_SESSION_IMPL *session, WT_CONDVAR *cond, bool locked)
 	WT_DECL_RET;
 	bool unlock_here;
 
-	WT_BEGIN_FUNC(session);
+	WT_BEGIN_LOCK(session, cond);
 	unlock_here = false;
 	/*
 	 * !!!
@@ -152,7 +152,7 @@ __wt_cond_signal(WT_SESSION_IMPL *session, WT_CONDVAR *cond, bool locked)
 
 err:	if (unlock_here)
 		WT_TRET(pthread_mutex_unlock(&cond->mtx));
-	WT_END_FUNC(session);
+	WT_END_LOCK(session, cond);
 	if (ret == 0)
 		return (0);
 	WT_RET_MSG(session, ret, "pthread_cond_broadcast");
