@@ -335,7 +335,7 @@ __wt_fair_spinlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 	uint16_t ticket;
 	int pause_cnt;
 
-	WT_BEGIN_LOCK(session, lock);
+	//WT_BEGIN_LOCK(session, lock);
 
 	/*
 	 * Possibly wrap: if we have more than 64K lockers waiting, the ticket
@@ -346,7 +346,7 @@ __wt_fair_spinlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 	while (ticket != lock->fair_lock_owner)
 		WT_PAUSE();
 
-	WT_END_LOCK(session, lock);
+	//WT_END_LOCK(session, lock);
 	return (0);
 }
 
@@ -358,12 +358,12 @@ __wt_fair_spinlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 static inline int
 __wt_fair_unlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 {
-	WT_BEGIN_LOCK(session, lock);
+	//WT_BEGIN_LOCK(session, lock);
 	/*
 	 * We have exclusive access - the update does not need to be atomic.
 	 */
 	++lock->fair_lock_owner;
-	WT_END_LOCK(session, lock);
+	//WT_END_LOCK(session, lock);
 	return (0);
 }
 
@@ -384,6 +384,13 @@ __wt_fair_islocked(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 /*
  * The Fast-Slow lock implementation.
  */
+static inline int
+__fs_measure_tracing_overhead(WT_SESSION_IMPL *session)
+{
+	WT_BEGIN_FUNC(session);
+	WT_END_FUNC(session);
+}
+
 #define WT_FS_MAXSPINNERS 4 /* Should be set close to the number of CPUs */
 static inline int
 __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
@@ -397,6 +404,7 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 			   sizeof(WT_FS_WHEAD),
 			   &lock->waiter_htable));
 	printf("Using fslock with %d spinners\n", WT_FS_MAXSPINNERS);
+	__fs_measure_tracing_overhead(session);
 	return 0;
 }
 
@@ -498,7 +506,7 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 	WT_FS_WHEAD *slot_head;
 	WT_FS_WHANDLE *wh = NULL;
 
-	WT_BEGIN_FUNC(session);
+	//WT_BEGIN_FUNC(session);
 
 	/* Find the slot where our waiters is queued */
 	waiter_slot = waiter_ticket % lock->waiters_size;
@@ -517,7 +525,7 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 		}
 	}
 	__wt_fair_unlock(session, &slot_head->lk);
-	WT_END_FUNC(session);
+	//WT_END_FUNC(session);
 }
 
 static inline int
@@ -555,12 +563,14 @@ static inline int
 __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 {
 	uint16_t ot = lock->fast.fair_lock_owner;
-	uint16_t wakee_ticket =
-		__fs_get_next_wakee(lock->fast.fair_lock_owner);
+	uint16_t wakee_ticket;
 
 	WT_BEGIN_LOCK(session, lock);
 
-	__wt_fair_unlock(session, &lock->fast);
+	wakee_ticket = __fs_get_next_wakee(lock->fast.fair_lock_owner);
+
+	/* Unlock the "fast" portion of the lock. */
+	++lock->fast.fair_lock_owner;
 	__fs_wake_next_waiter(session, wakee_ticket, lock);
 
 	WT_END_LOCK(session, lock);
