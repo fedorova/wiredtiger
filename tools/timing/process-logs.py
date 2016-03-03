@@ -29,8 +29,8 @@ class LockRecord:
         self.timeAcquired = long(timeAcquired);
 
     def printLockRecord(self):
-        print(self.name + ": [" + str(self.thread) + "]" +
-              str(self.timeAcquired));
+        print(self.name + ": [" + str(self.thread) + "] " +
+              str(self.timeAcquired) + "\n");
 
 #
 # PerfData class contains informtation about the function running
@@ -68,7 +68,8 @@ class PerfData:
 
 class LockData:
 
-    def __init__(self):
+    def __init__(self, name):
+        self.name = name;
         self.numAcquire = 0;
         self.numRelease = 0;
         self.numTryLock = 0;
@@ -77,6 +78,7 @@ class LockData:
         self.timeRelease = 0;
         self.timeHeld = 0;
         self.lastAcquireRecord = None;
+        self.lockHeldTimes = [];
 
     def getAverageAcquire(self):
         if(self.numAcquire > 0):
@@ -101,6 +103,18 @@ class LockData:
             return (float(self.timeHeld) / float(self.numRelease));
         else:
             return 0;
+
+    def showHistogram(self):
+        if(len(self.lockHeldTimes) < 1):
+            return;
+
+        plt.figure();
+        plt.hist(self.lockHeldTimes, bins=50, log=True);
+        plt.title("Lock " + self.name)
+        plt.xlabel("Lock held time (nanoseconds)")
+        plt.ylabel("Frequency")
+        filename = "lock-" + self.name + ".png";
+        plt.savefig(filename);
 
     def printSelf(self):
         print("\t Num acquire: " + str(self.numAcquire));
@@ -185,7 +199,7 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
         lockName = lockName + word + " ";
 
     if(not locksDictionary.has_key(lockName)):
-        lockData = LockData();
+        lockData = LockData(lockName);
         locksDictionary[lockName] = lockData;
 
     lockData = locksDictionary[lockName];
@@ -245,9 +259,11 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
         if(lastAcquireRecord is None):
             print("Could not find a matching acquire for: ")
             logRec.printLogRecord();
+            print("Lock name: " + lockName);
         else:
             lockHeldTime = logRec.time - lastAcquireRecord.timeAcquired;
             lockData.timeHeld = lockData.timeHeld + lockHeldTime;
+            lockData.lockHeldTimes.append(long(lockHeldTime));
 
             # Reset the lockAcquire record to null
             lockData.lastAcquireRecord = None;
@@ -389,6 +405,7 @@ def main():
         for lockKey, lockData in lockDataDict.iteritems():
             print("Lock \"" + lockKey + "\":");
             lockData.printSelf();
+            lockData.showHistogram();
 
         print("------------------------------");
 
