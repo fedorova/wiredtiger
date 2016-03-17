@@ -1,10 +1,12 @@
 #!/usr/bin/tclsh
 
-set num_threads 1
-set min_lines 26000
-set max_lines 30000
-set dir ~/thread_logs/fslock_24t_4sp
-set outputlog $dir/vec_clk.txt
+package require zlib
+
+set num_threads 35
+set min_lines 1917395
+set max_lines 1926704
+set dir ./
+set outputlog $dir/vec_clk$min_lines-$max_lines.txt
 set locknames {}
 set trylock_status {}
 
@@ -200,51 +202,51 @@ if {[file exists temp.txt]} {
 	file delete temp.txt
 }
 
-#if {[file exists temp.txt.gz]} {
-#	file delete temp.txt.gz
-#}
+if {[file exists temp.txt.gz]} {
+	file delete temp.txt.gz
+}
 
 if {[file exists $outputlog]} {
 	file delete $outputlog
 }
 
-#set fd_temp [open temp.txt w]
+set fd_temp [open temp.txt w]
 
-#for {set i 0} {$i < $num_threads} {incr i} {
-#        set count 0
-#	set logfile $dir/log.txt.$i.gz
-#        set fd [open $logfile]
-#        zlib push gunzip $fd
+for {set i 0} {$i < $num_threads} {incr i} {
+        set count 0
+	set logfile $dir/log.txt.$i.gz
+        set fd [open $logfile]
+        zlib push gunzip $fd
+
+        while {[gets $fd line] >= 0} {
+               incr count
 #
-#        while {[gets $fd line] >= 0} {
-#               incr count
-##
-##		if {$count >= $max_lines} {
-##			break
-##		} elseif {$count >= $min_lines} {
-##        		set match [regexp {(\-\-\>|\<\-\-)(\s+)(__\w+)(\s+)(\d+)(\s+)(\d+)} $line]
-##        		if {$match} {
-##             			puts $fd_temp $line
-##        		} else {
-##                		puts "Uh oh, something is wrong with line $count of $logfile"
-##        		}
-##		}
-#
-#
-#        	set match [regexp {(\-\-\>|\<\-\-)(\s+)(__\w+)(\s+)(\d+)(\s+)(\d+)} $line]
-#        	if {$match} {
-#             		puts $fd_temp $line
-#        	} else {
-#			puts "Uh oh, something is wrong with line $count of $logfile"
+#		if {$count >= $max_lines} {
+#			break
+#		} elseif {$count >= $min_lines} {
+#        		set match [regexp {(\-\-\>|\<\-\-)(\s+)(__\w+)(\s+)(\d+)(\s+)(\d+)} $line]
+#        		if {$match} {
+#             			puts $fd_temp $line
+#        		} else {
+#                		puts "Uh oh, something is wrong with line $count of $logfile"
+#        		}
 #		}
-#        }
-#
-#        close $fd
-#}
 
-#close $fd_temp
-#exec less temp.txt | sort -t " " -k4n,4 -o temp.txt
-#exec gzip temp.txt
+
+        	set match [regexp {(\-\-\>|\<\-\-)(\s+)(__\w+)(\s+)(\d+)(\s+)(\d+)} $line]
+        	if {$match} {
+             		puts $fd_temp $line
+        	} else {
+			puts "Uh oh, something is wrong with line $count of $logfile"
+		}
+        }
+
+        close $fd
+}
+
+close $fd_temp
+exec less temp.txt | sort -t " " -k4n,4 -o temp.txt
+exec gzip temp.txt
 
 set temp_fd [open temp.txt.gz]
 zlib push gunzip $temp_fd
