@@ -1,8 +1,8 @@
 #!/usr/bin/tclsh
 
-set num_threads 35
-set min_lines 18000000
-set max_lines 18004000
+set num_threads 1
+set min_lines 26000
+set max_lines 30000
 set dir ~/thread_logs/fslock_24t_4sp
 set outputlog $dir/vec_clk.txt
 set locknames {}
