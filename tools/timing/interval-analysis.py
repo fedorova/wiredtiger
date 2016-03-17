@@ -41,7 +41,7 @@ def aggregate(pattern, intervalLength):
 
     regexp = re.compile(pattern);
 
-    for key, value in sorted(giantDict):
+    for key, value in sorted(giantDict.iteritems()):
 
         time = key;
         line = value;
