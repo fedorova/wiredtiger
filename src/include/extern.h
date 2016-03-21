@@ -518,7 +518,7 @@ extern int __wt_remove(WT_SESSION_IMPL *session, const char *name);
 extern int __wt_rename(WT_SESSION_IMPL *session, const char *from, const char *to);
 extern int __wt_read( WT_SESSION_IMPL *session, WT_FH *fh, wt_off_t offset, size_t len, void *buf);
 extern int __wt_write(WT_SESSION_IMPL *session, WT_FH *fh, wt_off_t offset, size_t len, const void *buf);
-extern void __wt_sleep(uint64_t seconds, uint64_t micro_seconds);
+extern void __wt_sleep(WT_SESSION_IMPL *session, uint64_t seconds, uint64_t micro_seconds);
 extern int __wt_fopen(WT_SESSION_IMPL *session, const char *name, WT_FHANDLE_MODE mode_flag, u_int flags, FILE **fpp);
 extern int __wt_vfprintf(FILE *fp, const char *fmt, va_list ap);
 extern int __wt_fprintf(FILE *fp, const char *fmt, ...) WT_GCC_FUNC_DECL_ATTRIBUTE((format (printf, 2, 3)));

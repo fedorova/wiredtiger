@@ -84,7 +84,7 @@ __wt_clsm_await_switch(WT_CURSOR_LSM *clsm)
 		if (waited % WT_THOUSAND == 0)
 			WT_RET(__wt_lsm_manager_push_entry(
 			    session, WT_LSM_WORK_SWITCH, 0, lsm_tree));
-		__wt_sleep(0, 10);
+		__wt_sleep(session, 0, 10);
 	}
 	return (0);
 }
@@ -1344,7 +1344,7 @@ __clsm_put(WT_SESSION_IMPL *session, WT_CURSOR_LSM *clsm,
 		    lsm_tree->lsm_merge_throttle, lsm_tree->merge_throttle);
 		WT_STAT_FAST_CONN_INCRV(session,
 		    lsm_merge_throttle, lsm_tree->merge_throttle);
-		__wt_sleep(0,
+		__wt_sleep(session, 0,
 		    lsm_tree->ckpt_throttle + lsm_tree->merge_throttle);
 	}
 

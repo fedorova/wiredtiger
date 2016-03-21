@@ -270,6 +270,7 @@ __wt_cache_page_evict(WT_SESSION_IMPL *session, WT_PAGE *page)
 	WT_CACHE *cache;
 	WT_PAGE_MODIFY *modify;
 
+	WT_BEGIN_FUNC(session);
 	cache = S2C(session)->cache;
 	modify = page->modify;
 
@@ -297,9 +298,11 @@ __wt_cache_page_evict(WT_SESSION_IMPL *session, WT_PAGE *page)
 			    modify->bytes_dirty, "WT_CACHE.bytes_dirty");
 	}
 
+	WT_TRACE_RECORD(session, "cache_page_evict_beforeatomics");
 	/* Update pages and bytes evicted. */
 	(void)__wt_atomic_add64(&cache->bytes_evict, page->memory_footprint);
 	(void)__wt_atomic_add64(&cache->pages_evict, 1);
+	WT_END_FUNC(session);
 }
 
 /*

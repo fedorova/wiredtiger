@@ -200,7 +200,7 @@ __evict_server(void *arg)
 				if (spins < WT_THOUSAND)
 					__wt_yield(session);
 				else
-					__wt_sleep(0, WT_THOUSAND);
+					__wt_sleep(session, 0, WT_THOUSAND);
 			}
 			/*
 			 * If we gave up acquiring the lock, that indicates a
@@ -635,7 +635,7 @@ __evict_pass(WT_SESSION_IMPL *session)
 			 * that can free space in cache, such as LSM discarding
 			 * handles.
 			 */
-			__wt_sleep(0, WT_THOUSAND * (uint64_t)loop);
+			__wt_sleep(session, 0, WT_THOUSAND * (uint64_t)loop);
 			if (loop == 100) {
 				/*
 				 * Mark the cache as stuck if we need space
@@ -781,6 +781,8 @@ __wt_evict_file_exclusive_on(WT_SESSION_IMPL *session, bool *evict_resetp)
 
 	*evict_resetp = false;
 
+	WT_BEGIN_FUNC(session);
+
 	btree = S2BT(session);
 	cache = S2C(session)->cache;
 
@@ -831,9 +833,11 @@ __wt_evict_file_exclusive_on(WT_SESSION_IMPL *session, bool *evict_resetp)
 		__wt_yield(session);
 
 	*evict_resetp = true;
-	return (0);
+	ret = 0;
+	goto done;
 
 err:	F_CLR(btree, WT_BTREE_NO_EVICTION);
+done:	WT_END_FUNC(session);
 	return (ret);
 }
 
@@ -1021,6 +1025,8 @@ __evict_walk(WT_SESSION_IMPL *session)
 	u_int max_entries, prev_slot, retries, slot, start_slot, spins;
 	bool dhandle_locked, incr;
 
+	WT_BEGIN_FUNC(session);
+
 	conn = S2C(session);
 	cache = S2C(session)->cache;
 	dhandle = NULL;
@@ -1040,6 +1046,8 @@ __evict_walk(WT_SESSION_IMPL *session)
 	max_entries = slot + WT_EVICT_WALK_INCR;
 
 retry:	while (slot < max_entries && ret == 0) {
+
+		WT_TRACE_RECORD(session, "evict_walk_loop");
 		/*
 		 * If another thread is waiting on the eviction server to clear
 		 * the walk point in a tree, give up.
@@ -1059,7 +1067,7 @@ retry:	while (slot < max_entries && ret == 0) {
 				if (spins < WT_THOUSAND)
 					__wt_yield(session);
 				else
-					__wt_sleep(0, WT_THOUSAND);
+					__wt_sleep(session, 0, WT_THOUSAND);
 			}
 			if (ret != 0)
 				break;
@@ -1185,6 +1193,8 @@ retry:	while (slot < max_entries && ret == 0) {
 	}
 
 	cache->evict_entries = slot;
+
+	WT_END_FUNC(session);
 	return (ret);
 }
 
@@ -1235,6 +1245,7 @@ __evict_walk_file(WT_SESSION_IMPL *session, u_int *slotp)
 	int internal_pages, restarts;
 	bool enough, modified, would_split;
 
+	WT_BEGIN_FUNC(session);
 	conn = S2C(session);
 	btree = S2BT(session);
 	cache = conn->cache;
@@ -1266,6 +1277,8 @@ __evict_walk_file(WT_SESSION_IMPL *session, u_int *slotp)
 	    evict < end && !enough && (ret == 0 || ret == WT_NOTFOUND);
 	    ret = __wt_tree_walk(
 	    session, &btree->evict_ref, &pages_walked, walk_flags)) {
+
+		WT_TRACE_RECORD(session, "evict_walk_file_loop");
 		enough = pages_walked > cache->evict_max_refs_per_file;
 		if ((ref = btree->evict_ref) == NULL) {
 			if (++restarts == 2 || enough)
@@ -1376,7 +1389,7 @@ fast:		/* If the page can't be evicted, give up. */
 	}
 
 	WT_STAT_FAST_CONN_INCRV(session, cache_eviction_walk, pages_walked);
-
+	WT_END_FUNC(session);
 	return (0);
 }
 
@@ -1406,7 +1419,7 @@ __evict_get_ref(
 
 	__wt_fs_lock(session, &cache->evict_lock, &session->evictlock_whandle);
 #else
-#if 0
+#if 1
 	for (;;) {
 		if (cache->evict_current == NULL)
 			return (WT_NOTFOUND);
@@ -1433,6 +1446,8 @@ __evict_get_ref(
 
 		/* Move to the next item. */
 		++cache->evict_current;
+
+		WT_TRACE_RECORD(session, "get_next_page_loop");
 
 		/*
 		 * Lock the page while holding the eviction mutex to prevent

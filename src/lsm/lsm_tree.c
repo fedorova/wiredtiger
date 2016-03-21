@@ -1371,7 +1371,7 @@ __wt_lsm_compact(WT_SESSION_IMPL *session, const char *name, bool *skipp)
 			} else
 				break;
 		}
-		__wt_sleep(1, 0);
+		__wt_sleep(session, 1, 0);
 		WT_ERR(__wt_seconds(session, &end));
 		if (session->compact->max_time > 0 &&
 		    session->compact->max_time < (uint64_t)(end - begin)) {

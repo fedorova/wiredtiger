@@ -49,7 +49,7 @@ retry:
 			 * If we haven't found work in a while, start sleeping
 			 * to wait for work to arrive instead of spinning.
 			 */
-			__wt_sleep(0, sleep_usec);
+			__wt_sleep(session, 0, sleep_usec);
 			sleep_usec = WT_MIN(sleep_usec * 2,
 			    MAX_ASYNC_SLEEP_USECS);
 		}

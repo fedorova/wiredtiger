@@ -513,7 +513,7 @@ retry:
 		 * racing calls because a later call may be waiting for
 		 * specific enqueued ops to be complete before this returns.
 		 */
-		__wt_sleep(0, 100000);
+		__wt_sleep(session, 0, 100000);
 
 	if (!__wt_atomic_cas32(&async->flush_state, WT_ASYNC_FLUSH_NONE,
 	    WT_ASYNC_FLUSH_IN_PROGRESS))

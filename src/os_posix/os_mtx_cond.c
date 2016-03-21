@@ -56,7 +56,7 @@ __wt_cond_wait_signal(
 	WT_DECL_RET;
 	bool unlock_here;
 
-	//WT_BEGIN_FUNC(session);
+	WT_BEGIN_FUNC(session);
 
 	if(locked)
 		unlock_here = false;
@@ -92,11 +92,7 @@ __wt_cond_wait_signal(
 		    (((uint64_t)ts.tv_nsec + WT_THOUSAND * usecs) % WT_BILLION);
 		ret = pthread_cond_timedwait(&cond->cond, &cond->mtx, &ts);
 	} else
-	{
-		WT_BEGIN_FUNC(session);
 		ret = pthread_cond_wait(&cond->cond, &cond->mtx);
-		WT_END_FUNC(session);
-	}
 
 	/*
 	 * Check pthread_cond_wait() return for EINTR, ETIME and
@@ -115,7 +111,7 @@ __wt_cond_wait_signal(
 
 err:	if (unlock_here)
 		WT_TRET(pthread_mutex_unlock(&cond->mtx));
-	//WT_END_FUNC(session);
+	WT_END_FUNC(session);
 done:
 	if (ret == 0)
 		return (0);
@@ -132,7 +128,7 @@ __wt_cond_signal(WT_SESSION_IMPL *session, WT_CONDVAR *cond, bool locked)
 	WT_DECL_RET;
 	bool unlock_here;
 
-	//WT_BEGIN_FUNC(session);
+	WT_BEGIN_FUNC(session);
 	unlock_here = false;
 	/*
 	 * !!!
@@ -157,7 +153,7 @@ __wt_cond_signal(WT_SESSION_IMPL *session, WT_CONDVAR *cond, bool locked)
 
 err:	if (unlock_here)
 		WT_TRET(pthread_mutex_unlock(&cond->mtx));
-	//WT_END_FUNC(session);
+	WT_END_FUNC(session);
 	if (ret == 0)
 		return (0);
 	WT_RET_MSG(session, ret, "pthread_cond_broadcast");

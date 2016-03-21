@@ -246,6 +246,7 @@ __wt_free_int(WT_SESSION_IMPL *session, const void *p_arg)
 	if (p == NULL)				/* ANSI C free semantics */
 		return;
 
+	WT_BEGIN_FUNC(session);
 	/*
 	 * If there's a serialization bug we might race with another thread.
 	 * We can't avoid the race (and we aren't willing to flush memory),
@@ -262,4 +263,5 @@ __wt_free_int(WT_SESSION_IMPL *session, const void *p_arg)
 		WT_STAT_FAST_CONN_INCR(session, memory_free);
 
 	free(p);
+	WT_END_FUNC(session);
 }

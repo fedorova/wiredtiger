@@ -10,6 +10,20 @@
  */
 
 #ifdef HAVE_TIMING
+#define WT_TRACE_RECORD(session, string)				       \
+	{	                                                               \
+	struct timespec ts_begin, ts_end;			               \
+	if(session != NULL)                                                    \
+        if(__wt_epoch(session, &ts_begin) == 0)	{		               \
+	        if(session->timing_log !=NULL) {                               \
+        		fprintf(session->timing_log, "--> %s %d %ld\n",        \
+				string, (session)->id, 		               \
+				ts_begin.tv_sec * WT_BILLION +		       \
+				ts_begin.tv_nsec);			       \
+	        }                                                              \
+	}                                                                      \
+	}
+
 #define WT_BEGIN_FUNC(session)						       \
 	{	                                                               \
 	struct timespec ts_begin, ts_end;			               \
@@ -116,6 +130,7 @@
          }
 
 #else
+#define WT_TRACE_RECORD(session, string)
 #define WT_BEGIN_FUNC(session)
 #define WT_END_FUNC(session)
 #define WT_BEGIN_SPINLOCK(session, spinlock)
