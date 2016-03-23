@@ -391,7 +391,7 @@ __fs_measure_tracing_overhead(WT_SESSION_IMPL *session)
 	WT_END_FUNC(session);
 }
 
-#define WT_FS_MAXSPINNERS 4 /* Should be set close to the number of CPUs */
+#define WT_FS_MAXSPINNERS 6 /* Should be set close to the number of CPUs */
 static inline int
 __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 {

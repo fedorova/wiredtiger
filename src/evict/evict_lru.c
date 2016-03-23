@@ -1419,7 +1419,7 @@ __evict_get_ref(
 
 	__wt_fs_lock(session, &cache->evict_lock, &session->evictlock_whandle);
 #else
-#if 1
+#if 0
 	for (;;) {
 		if (cache->evict_current == NULL)
 			return (WT_NOTFOUND);
