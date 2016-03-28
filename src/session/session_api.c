@@ -183,6 +183,8 @@ __session_close(WT_SESSION *wt_session, const char *config)
 	/* Decrement the count of open sessions. */
 	WT_STAT_FAST_CONN_DECR(session, session_open);
 
+	__wt_fs_change_numsessions(session, &conn->cache->evict_lock, -1);
+
 	/*
 	 * Sessions are re-used, clear the structure: the clear sets the active
 	 * field to 0, which will exclude the hazard array from review by the
@@ -1419,6 +1421,7 @@ __open_session(WT_CONNECTION_IMPL *conn,
 	 * lock.
 	 */
 	WT_ERR(__wt_fs_whandle_init(session, &session_ret->evictlock_whandle));
+	__wt_fs_change_numsessions(session, &conn->cache->evict_lock, 1);
 
 	/*
 	 * Publish: make the entry visible to server threads.  There must be a

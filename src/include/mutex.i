@@ -391,21 +391,40 @@ __fs_measure_tracing_overhead(WT_SESSION_IMPL *session)
 	WT_END_FUNC(session);
 }
 
-#define WT_FS_MAXSPINNERS 2 /* Should be set close to the number of CPUs */
+#define WT_FS_NUMCPUS 16 /* Should be set close to the number of CPUs */
 static inline int
 __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 {
 	lock->name = name;
 	memset(&lock->fast, 0, sizeof(WT_FAIR_LOCK));
+	memset(&lock->config_lk, 0, sizeof(WT_FAIR_LOCK));
 
 	lock->waiters_size = S2C(session)->session_size;
+	lock->workers = 1;
+	lock->sessions = 1;
+	lock->max_spinners = WT_FS_NUMCPUS; 
 
 	WT_RET(__wt_calloc(session, lock->waiters_size,
 			   sizeof(WT_FS_WHEAD),
 			   &lock->waiter_htable));
-	printf("Using fslock with %d spinners\n", WT_FS_MAXSPINNERS);
+	printf("Using fslock with %d CPUs\n", WT_FS_NUMCPUS);
 	__fs_measure_tracing_overhead(session);
 	return 0;
+}
+
+static inline int
+__wt_fs_change_numsessions(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, int val)
+{
+	__wt_fair_lock(&lock->config_lk);
+	lock->sessons += val;
+	lock->workers += val;
+	if(lock->workers < WT_FS_NUMCPUS)
+		lock->max_spinners = WT_FS_NUMCPUS;
+	else
+		lock->max_spinners = WT_FS_NUMCPUS - lock_workers;
+	__wt_fair_unlock(&lock->config_lk);
+
+	printf("%d workers, %d max spinners\n", lock->workers, lock->max_spinners);
 }
 
 static inline int
@@ -423,14 +442,14 @@ __wt_fs_whandle_init(WT_SESSION_IMPL *session, WT_FS_WHANDLE *wh)
 static inline uint16_t
 __fs_get_next_wakee(uint16_t owner_number)
 {
-	return (uint16_t)(owner_number + WT_FS_MAXSPINNERS);
+	return (uint16_t)(owner_number + WT_FS_NUMCPUS);
 }
 
 static inline bool
 __fs_should_wait(WT_FS_LOCK *lock, uint16_t ticket)
 {
 	return ((uint16_t)(ticket - lock->fast.fair_lock_owner)
-		< WT_FS_MAXSPINNERS) ? 0 : 1;
+		< lock->max_spinners) ? 0 : 1;
 }
 
 static void
@@ -444,7 +463,8 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint16_t ticket, WT_FS_LOCK *lock,
 	WT_BEGIN_FUNC(session);
 
 	/* Find my slot in the waiters array */
-	my_slot = ticket % lock->waiters_size;
+	//my_slot = ticket % lock->waiters_size;
+	my_slot = 0;
 	slot_head = &lock->waiter_htable[my_slot];
 
 	/* Set our current ticket, so the waker can wake us up */
@@ -505,14 +525,17 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 	int waiter_slot;
 	WT_FS_WHEAD *slot_head;
 	WT_FS_WHANDLE *wh = NULL;
+	WT_FS_WHANDLE *min_wh = NULL;
 
 	//WT_BEGIN_FUNC(session);
 
 	/* Find the slot where our waiters is queued */
-	waiter_slot = waiter_ticket % lock->waiters_size;
+	//waiter_slot = waiter_ticket % lock->waiters_size;
+	waiter_slot = 0;
 	slot_head = &lock->waiter_htable[waiter_slot];
 
 	/* Lock the slot, find our waiter */
+#if 0
 	__wt_fair_spinlock(session, &slot_head->lk);
 	for(wh = slot_head->first_waiter; wh != NULL; wh = wh->next)
 	{
@@ -525,6 +548,20 @@ __fs_wake_next_waiter(WT_SESSION_IMPL *session, uint16_t waiter_ticket,
 		}
 	}
 	__wt_fair_unlock(session, &slot_head->lk);
+#endif
+	/* Lock the slot, find the minimum waiter */
+	int min = 1000000;
+	__wt_fair_spinlock(session, &slot_head->lk);
+	for(wh = slot_head->first_waiter; wh != NULL; wh = wh->next)
+	{
+		if(wh->ticket < min) {
+			min = wh->ticket;
+			min_wh = wh;
+		}
+	}
+	if(min_wh != NULL)
+		__wt_cond_signal(session, min_wh->wh_cond, false);
+	__wt_fair_unlock(session, &slot_head->lk);
 	//WT_END_FUNC(session);
 }
 
@@ -535,6 +572,13 @@ __wt_fs_lock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, WT_FS_WHANDLE *whandle)
 	int pause_cnt;
 
 	WT_BEGIN_LOCK(session, lock);
+
+	__wt_fair_lock(&lock->config_lk);
+	lock->workers--;
+	lock->max_spinners = WT_FS_MAXCPUS - lock->workers;
+	if(lock->max_spinners < 0)
+		lock->max_spinners = 1;
+	__wt_fair_unlock(&lock->config_lk);
 	/*
 	 * Possibly wrap: if we have more than 64K lockers waiting, the ticket
 	 * value will wrap and two lockers will simultaneously be granted the
@@ -572,6 +616,13 @@ __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 	/* Unlock the "fast" portion of the lock. */
 	++lock->fast.fair_lock_owner;
 	__fs_wake_next_waiter(session, wakee_ticket, lock);
+
+	__wt_fair_lock(&lock->config_lk);
+	lock->workers++;
+	lock->max_spinners = WT_FS_MAXCPUS - lock->workers;
+	if(lock->max_spinners < 0)
+		lock->max_spinners = 1;
+	__wt_fair_unlock(&lock->config_lk);
 
 	WT_END_LOCK(session, lock);
 	return 0;
