@@ -385,7 +385,7 @@ __wt_fair_islocked(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
  * The Fast-Slow lock implementation.
  */
 
-#define WT_FS_NUMCPUS 4 /* Should be set close to the number of CPUs */
+#define WT_FS_NUMCPUS 24 /* Should be set close to the number of CPUs */
 static bool __fs_init = false;
 
 static inline int
@@ -398,6 +398,7 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 	lock->waiters_size = S2C(session)->session_size;
 	lock->workers = 0;
 	lock->sessions = 0;
+	lock->max_sessions = 0;
 	lock->max_spinners = WT_FS_NUMCPUS;
 
 	WT_RET(__wt_calloc(session, lock->waiters_size,
@@ -438,6 +439,8 @@ __wt_fs_change_sessions_workers(
 	__wt_fair_lock(session, &lock->config_lk);
 	lock->sessions += val_s;
 	lock->workers += val_w;
+	if(lock->sessions > lock->max_sessions)
+		lock->max_sessions = lock->sessions;
 
 	lock->max_spinners = __fs_get_target_spinners(lock);
 
@@ -549,12 +552,13 @@ __fs_wake_next_waiters(WT_SESSION_IMPL *session, WT_FS_LOCK *lock,
 
 	WT_FS_WHEAD *slot_head;
 	WT_FS_WHANDLE *wh = NULL;
+	int i;
 
 	WT_BEGIN_FUNC(session);
 
 	slot_head = &lock->waiter_htable[0];
 
-	for(int i = 0; i < num_to_wake; i++) {
+	for(i = 0; i < num_to_wake; i++) {
 		/* The largest ticket that we can have is the largest
 		 * unsigned 16-bit number. So we set min initially to be one
 		 * greater than that.
@@ -666,8 +670,10 @@ __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 	/* Unlock the "fast" portion of the lock. */
 	++lock->fast.fair_lock_owner;
 
-	num_towake = __fs_get_num_wakees(session, lock);
-	__fs_wake_next_waiters(session, lock, num_towake);
+	if(lock->max_sessions > WT_FS_NUMCPUS) {
+		num_towake = __fs_get_num_wakees(session, lock);
+		__fs_wake_next_waiters(session, lock, num_towake);
+	}
 
 	WT_END_LOCK(session, lock);
 	return 0;

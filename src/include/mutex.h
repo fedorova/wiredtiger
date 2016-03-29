@@ -127,6 +127,7 @@ struct __wt_fs_lock {
 	struct __wt_fs_whead *waiter_htable;
 	int num_sleepers;
 	int sessions;
+	int max_sessions;
 	int workers;
 	int max_spinners;
 	struct __wt_fair_lock config_lk;
