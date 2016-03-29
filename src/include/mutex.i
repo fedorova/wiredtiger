@@ -385,7 +385,7 @@ __wt_fair_islocked(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
  * The Fast-Slow lock implementation.
  */
 
-#define WT_FS_NUMCPUS 24 /* Should be set close to the number of CPUs */
+#define WT_FS_NUMCPUS 4 /* Should be set close to the number of CPUs */
 static bool __fs_init = false;
 
 static inline int
@@ -629,7 +629,8 @@ __wt_fs_lock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, WT_FS_WHANDLE *whandle)
 	/* We are about to wait on a lock, so we are no longer considered a
 	 * worker.
 	 */
-	__wt_fs_change_sessions_workers(session, lock, 0, -1);
+	if(lock->max_sessions > WT_FS_NUMCPUS)
+		__wt_fs_change_sessions_workers(session, lock, 0, -1);
 
 	/*
 	 * Possibly wrap: if we have more than 64K lockers waiting, the ticket
@@ -652,7 +653,8 @@ retry:
 	}
 done:
 	/* We acquired the lock, so we are now considered a worker. */
-	__wt_fs_change_sessions_workers(session, lock, 0, 1);
+	if(lock->max_sessions > WT_FS_NUMCPUS)
+		__wt_fs_change_sessions_workers(session, lock, 0, 1);
 
 	WT_END_LOCK(session, lock);
 	return 0;
@@ -661,7 +663,6 @@ done:
 static inline int
 __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 {
-	uint16_t ot = lock->fast.fair_lock_owner;
 	uint16_t wakee_ticket;
 	int num_towake;
 
