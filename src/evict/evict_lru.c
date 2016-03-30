@@ -296,6 +296,7 @@ __evict_workers_resize(WT_SESSION_IMPL *session)
 			FLD_SET(session_flags, WT_SESSION_LOOKASIDE_CURSOR);
 		WT_ERR(__wt_open_internal_session(conn, "eviction-worker",
 		    false, session_flags, &workers[i].session));
+		__wt_fs_change_sessions(session, 1);
 		workers[i].id = i;
 
 		if (i < conn->evict_workers_min) {

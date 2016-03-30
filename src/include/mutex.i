@@ -385,7 +385,7 @@ __wt_fair_islocked(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
  * The Fast-Slow lock implementation.
  */
 
-#define WT_FS_NUMCPUS 4 /* Should be set close to the number of CPUs */
+#define WT_FS_NUMCPUS 24 /* Should be set close to the number of CPUs */
 
 static inline int
 __fs_get_target_spinners(WT_SESSION_IMPL *session) {
