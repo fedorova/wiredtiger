@@ -342,6 +342,8 @@ __wt_evict_create(WT_SESSION_IMPL *session)
 	    "eviction-server", false, session_flags, &conn->evict_session));
 	session = conn->evict_session;
 
+	__wt_fs_change_sessions(session, 1);
+
 	/*
 	 * If eviction workers were configured, allocate sessions for them now.
 	 * This is done to reduce the chance that we will open new eviction

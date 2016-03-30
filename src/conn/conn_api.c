@@ -1092,6 +1092,8 @@ __conn_open_session(WT_CONNECTION *wt_conn,
 	    conn, event_handler, config, true, &session_ret));
 	*wt_sessionp = &session_ret->iface;
 
+	__wt_fs_change_sessions(session, 1);
+
 err:	API_END_RET_NOTFOUND_MAP(session, ret);
 }
 

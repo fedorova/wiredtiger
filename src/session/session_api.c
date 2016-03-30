@@ -183,8 +183,8 @@ __session_close(WT_SESSION *wt_session, const char *config)
 	/* Decrement the count of open sessions. */
 	WT_STAT_FAST_CONN_DECR(session, session_open);
 
-	__wt_fs_change_sessions_workers(session,
-					&conn->cache->evict_lock, -1, 0);
+	if(!F_ISSET(session, WT_SESSION_INTERNAL))
+		__wt_fs_change_sessions(session, -1);
 
 	/*
 	 * Sessions are re-used, clear the structure: the clear sets the active
@@ -1422,8 +1422,6 @@ __open_session(WT_CONNECTION_IMPL *conn,
 	 * lock.
 	 */
 	WT_ERR(__wt_fs_whandle_init(session, &session_ret->evictlock_whandle));
-	__wt_fs_change_sessions_workers(session,
-					&conn->cache->evict_lock, 1, 0);
 
 	/*
 	 * Publish: make the entry visible to server threads.  There must be a

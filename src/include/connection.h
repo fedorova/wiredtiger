@@ -180,6 +180,12 @@ struct __wt_connection_impl {
 	WT_SPINLOCK table_lock;		/* Table creation spinlock */
 	WT_SPINLOCK turtle_lock;	/* Turtle file spinlock */
 
+	/* Various data for fs locking system */
+	int fs_sessions;
+	int fs_max_sessions;
+	int fs_max_spinners;
+	int fs_workers;
+
 	/*
 	 * We distribute the btree page locks across a set of spin locks. Don't
 	 * use too many: they are only held for very short operations, each one
