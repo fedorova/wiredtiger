@@ -174,6 +174,8 @@ struct __wt_extlist;
     typedef struct __wt_extlist WT_EXTLIST;
 struct __wt_fair_lock;
     typedef struct __wt_fair_lock WT_FAIR_LOCK;
+struct __wt_fair_lock64;
+    typedef struct __wt_fair_lock64 WT_FAIR_LOCK64;
 struct __wt_fh;
     typedef struct __wt_fh WT_FH;
 struct __wt_fs_lock;

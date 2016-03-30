@@ -110,7 +110,7 @@ struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_spinlock {
 /* A fast-slow lock */
 
 struct __wt_fs_whandle {
-	uint16_t ticket;
+	uint64_t ticket;
 	WT_CONDVAR *wh_cond;
 	struct __wt_fs_whandle *next;
 };
@@ -120,8 +120,15 @@ struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_fs_whead {
 	struct __wt_fs_whandle * volatile first_waiter;
 };
 
+struct __wt_fair_lock64 {
+	/* Ticket for current owner */
+	volatile uint64_t owner;
+	/* Last allocated ticket */
+	uint64_t waiter;
+};
+
 struct __wt_fs_lock {
-	struct __wt_fair_lock fast;
+	struct __wt_fair_lock64 fast;
 	const char *name;
 	size_t waiters_size;
 	struct __wt_fs_whead *waiter_htable;
