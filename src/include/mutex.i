@@ -445,6 +445,7 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 	lock->name = name;
 	memset(&lock->fast, 0, sizeof(WT_FAIR_LOCK64));
 	memset(&lock->config_lk, 0, sizeof(WT_FAIR_LOCK));
+	lock->tcas_lock = 0;
 
 	lock->waiters_size = S2C(session)->session_size;
 
@@ -607,9 +608,24 @@ __wt_fs_lock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, WT_FS_WHANDLE *whandle)
 	WT_CONNECTION_IMPL *conn = S2C(session);
 	uint64_t ticket;
 	bool waited = false;
+	int old_lock_val;
 
 	WT_BEGIN_LOCK(session, lock);
 
+	WT_UNUSED(ticket);
+	WT_UNUSED(conn);
+	WT_UNUSED(waited);
+
+retry:
+	/* Spin while the lock looks busy */
+	while((old_lock_val = lock->tcas_lock) != 0)
+		;
+
+	if(WT_ATOMIC_CAS(&lock->tcas_lock, old_lock_val, 1))
+		return 0;
+	else
+		goto retry;
+#if 0
 	/*
 	 * Possibly wrap: if we have more than 2^64 lockers waiting, the ticket
 	 * value will wrap and two lockers will simultaneously be granted the
@@ -639,6 +655,7 @@ done:
 	/* We acquired the lock, so we are now considered a worker. */
 	if(conn->fs_max_sessions > WT_FS_NUMCPUS)
 		__wt_fs_change_workers(session, lock, 1, ticket);
+#endif
 
 	WT_END_LOCK(session, lock);
 	return 0;
@@ -651,6 +668,12 @@ __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 	uint64_t my_ticket;
 	int num_towake;
 
+	WT_UNUSED(conn);
+	WT_UNUSED(my_ticket);
+	WT_UNUSED(num_towake);
+
+	lock->tcas_lock = 0;
+#if 0
 	WT_BEGIN_LOCK(session, lock);
 
 	my_ticket = lock->fast.owner;
@@ -664,6 +687,7 @@ __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 	}
 
 	WT_END_LOCK(session, lock);
+#endif
 	return 0;
 }
 

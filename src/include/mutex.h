@@ -133,4 +133,5 @@ struct __wt_fs_lock {
 	size_t waiters_size;
 	struct __wt_fs_whead *waiter_htable;
 	struct __wt_fair_lock config_lk;
+	volatile int tcas_lock;
 };
