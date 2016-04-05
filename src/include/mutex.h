@@ -128,7 +128,7 @@ struct __wt_fair_lock64 {
 };
 
 struct __wt_fs_lock {
-	struct __wt_fair_lock64 fast;
+	int num_spinners;
 	const char *name;
 	size_t waiters_size;
 	struct __wt_fs_whead *waiter_htable;

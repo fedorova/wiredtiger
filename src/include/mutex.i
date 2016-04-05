@@ -407,6 +407,8 @@ __fs_get_target_spinners(WT_SESSION_IMPL *session) {
 static inline void
 __wt_fs_change_sessions(WT_SESSION_IMPL *session, int val) {
 
+	return;
+#if 0
 	WT_CONNECTION_IMPL *conn = S2C(session);
 
 	conn->fs_sessions += val;
@@ -419,13 +421,16 @@ __wt_fs_change_sessions(WT_SESSION_IMPL *session, int val) {
 	printf("%d sessions, %d max sessions, %d max spinners\n",
 	       conn->fs_workers, conn->fs_max_sessions,
 	       conn->fs_max_spinners);
-
+#endif
 }
 
 static inline void
 __wt_fs_change_workers(WT_SESSION_IMPL *session, WT_FS_LOCK *lock,
 		       int val, uint16_t ticket)
 {
+	return;
+
+#if 0
 	WT_CONNECTION_IMPL *conn = S2C(session);
 
 	__wt_fair_lock(session, &lock->config_lk);
@@ -435,7 +440,7 @@ __wt_fs_change_workers(WT_SESSION_IMPL *session, WT_FS_LOCK *lock,
 	conn->fs_max_spinners = __fs_get_target_spinners(session);
 
 	__wt_fair_unlock(session, &lock->config_lk);
-
+#endif
 
 }
 
@@ -443,15 +448,17 @@ static inline int
 __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 {
 	lock->name = name;
-	memset(&lock->fast, 0, sizeof(WT_FAIR_LOCK64));
 	memset(&lock->config_lk, 0, sizeof(WT_FAIR_LOCK));
 	lock->tcas_lock = 0;
+	lock->num_spinners = 0;
 
 	lock->waiters_size = S2C(session)->session_size;
 
 	WT_RET(__wt_calloc(session, lock->waiters_size,
 			   sizeof(WT_FS_WHEAD),
 			   &lock->waiter_htable));
+
+	WT_ASSERT(session, lock->waiter_htable[0].first_waiter == NULL);
 
 	printf("Using fslock with %d CPUs\n", WT_FS_NUMCPUS);
 
@@ -470,49 +477,48 @@ __wt_fs_whandle_init(WT_SESSION_IMPL *session, WT_FS_WHANDLE *wh)
 	return 0;
 }
 
+#define TARGET_SPINNERS 2
 
 static inline bool
-__fs_should_wait(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, uint64_t ticket)
-{
-	return ((uint64_t)(ticket - lock->fast.owner)
-		<= S2C(session)->fs_max_spinners) ? 0 : 1;
+__fs_should_block(WT_SESSION_IMPL *session, WT_FS_LOCK *lock) {
+
+	return (lock->num_spinners < TARGET_SPINNERS) ? false : true;
 }
 
 static void
-__fs_maybewait(WT_SESSION_IMPL *session, uint64_t ticket, WT_FS_LOCK *lock,
-	WT_FS_WHANDLE *whandle)
-{
-	int my_slot;
+__fs_maybe_block(WT_SESSION_IMPL *session, WT_FS_LOCK *lock,
+	WT_FS_WHANDLE *whandle) {
+
 	WT_FS_WHEAD *slot_head;
-	WT_FS_WHANDLE *wh = NULL, *wh_prev = NULL;
+	WT_FS_WHANDLE *wh = NULL;
 
 	WT_BEGIN_FUNC(session);
 
-	/* Find my slot in the waiters array */
-	//my_slot = ticket % lock->waiters_size;
-	my_slot = 0;
-	slot_head = &lock->waiter_htable[my_slot];
-
-	/* Set our current ticket, so the waker can wake us up */
-	whandle->ticket = ticket;
+	slot_head = &lock->waiter_htable[0];
 
 	/* Lock the slot and insert ourselves into the list if we should wait */
 	__wt_fair_spinlock(session, &slot_head->lk);
 
-	if(__fs_should_wait(session, lock, ticket)) {
+	if(__fs_should_block(session, lock)) {
 		bool signalled;
 
 		whandle->next = slot_head->first_waiter;
 		slot_head->first_waiter = whandle;
+
+//		printf("t %d: block, fw = %p\n", session->id,
+//		       slot_head->first_waiter);
 
 		__wt_spin_lock(session, (WT_SPINLOCK*)&whandle->wh_cond->mtx);
 		__wt_fair_unlock(session, &slot_head->lk);
 		__wt_cond_wait_signal(session, whandle->wh_cond,
 				      0, &signalled, true /*locked*/);
 		__wt_spin_unlock(session, (WT_SPINLOCK*)&whandle->wh_cond->mtx);
+//		printf("t %d: awake\n", session->id);
 	}
-	else
+	else {
 		__wt_fair_unlock(session, &slot_head->lk);
+//		printf("t %d: not actually blocking\n", session->id);
+	}
 
 	/* We don't recheck the condition upon awakening. Once the lock owner's
 	 * number got close to us, it cannot go back to being far.
@@ -521,15 +527,8 @@ __fs_maybewait(WT_SESSION_IMPL *session, uint64_t ticket, WT_FS_LOCK *lock,
 	WT_END_FUNC(session);
 }
 
-/*
- * Wake the next waiter whose ticket number indicates that it should begin
- * spinning.
- */
-static uint64_t last_awoken = 0;
-
 static void
-__fs_wake_next_waiters(WT_SESSION_IMPL *session, WT_FS_LOCK *lock,
-		       int num_to_wake, uint64_t tic) {
+__fs_unblock_next(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, int num_to_wake) {
 
 	WT_FS_WHEAD *slot_head;
 	WT_FS_WHANDLE *wh = NULL;
@@ -540,123 +539,84 @@ __fs_wake_next_waiters(WT_SESSION_IMPL *session, WT_FS_LOCK *lock,
 	slot_head = &lock->waiter_htable[0];
 
 	for(i = 0; i < num_to_wake; i++) {
-		/* The largest ticket that we can have is the largest
-		 * unsigned 16-bit number. So we set min initially to be one
-		 * greater than that.
-		 */
-		WT_FS_WHANDLE *min_wh = NULL, *prev = NULL, *prev_min = NULL;
-	        uint64_t min = 0xffffffffffffffff;
-
 		__wt_fair_spinlock(session, &slot_head->lk);
 
-		for(wh = slot_head->first_waiter; wh != NULL;
-		    prev = wh, wh = wh->next) {
-
-			if(wh->ticket <= min) {
-				min = wh->ticket;
-				min_wh = wh;
-				prev_min = prev;
-			}
-		}
-
-		if(min_wh) {
-
-			/* Remove the wakee from the list */
-			if(prev_min == NULL)
-				slot_head->first_waiter = min_wh->next;
-			else {
-				WT_ASSERT(session, prev_min != min_wh);
-				prev_min->next = min_wh->next;
-			}
-			min_wh->next = NULL;
+		wh = slot_head->first_waiter;
+		if(wh) {
+			slot_head->first_waiter = wh->next;
+			wh->next = NULL;
 		}
 		__wt_fair_unlock(session, &slot_head->lk);
 
-		if(min_wh) {
-			__wt_cond_signal(session, min_wh->wh_cond, false);
+		if(wh) {
+			__wt_cond_signal(session, wh->wh_cond, false);
+			//printf("t %d: woke %p\n", session->id, wh);
 		}
+		//else
+			//printf("t %d: no one to wake\n", session->id);
 	}
+
 	WT_END_FUNC(session);
 }
 
- static inline int
- __fs_get_num_wakees(WT_SESSION_IMPL *session, WT_FS_LOCK *lock) {
+static inline int
+__fs_num_to_unblock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock) {
 
-	 WT_CONNECTION_IMPL *conn = S2C(session);
-	 int target_spinners;
-	 int target_wakees;
+	int deficit;
 
-	 WT_BEGIN_FUNC(session);
+	if((deficit = TARGET_SPINNERS - lock->num_spinners) > 0)
+		return deficit;
+	else
+		return 1;
+}
 
-	 __wt_fair_lock(session, &lock->config_lk);
+static void
+__fs_change_numspinners(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, int val) {
 
-	 target_spinners = __fs_get_target_spinners(session);
-	 target_wakees = target_spinners - conn->fs_max_spinners;
-
-	 __wt_fair_unlock(session, &lock->config_lk);
-
-	 if(target_wakees < 1)
-		 target_wakees = 1;
-
-	 WT_END_FUNC(session);
-	 return target_wakees;
- }
+	__wt_fair_spinlock(session, &lock->config_lk);
+	lock->num_spinners += val;
+	__wt_fair_unlock(session, &lock->config_lk);
+}
 
 static inline int
 __wt_fs_lock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, WT_FS_WHANDLE *whandle)
 {
 	WT_CONNECTION_IMPL *conn = S2C(session);
-	uint64_t ticket;
-	bool waited = false;
+	bool incremented_spinners = false;
 	int old_lock_val;
 
 	WT_BEGIN_LOCK(session, lock);
-
-	WT_UNUSED(ticket);
 	WT_UNUSED(conn);
-	WT_UNUSED(waited);
 
+	//printf("t %d: tries to lock\n", session->id);
 retry:
-	/* Spin while the lock looks busy */
-	while((old_lock_val = lock->tcas_lock) != 0)
-		;
-
-	if(WT_ATOMIC_CAS(&lock->tcas_lock, old_lock_val, 1))
-		return 0;
-	else
-		goto retry;
-#if 0
-	/*
-	 * Possibly wrap: if we have more than 2^64 lockers waiting, the ticket
-	 * value will wrap and two lockers will simultaneously be granted the
-	 * lock.
-	 */
-	ticket = __wt_atomic_fetch_add64(&lock->fast.waiter, 1);
-
-	/* We are about to wait on a lock, so we are no longer considered a
-	 * worker.
-	 */
-	if(conn->fs_max_sessions > WT_FS_NUMCPUS)
-		__wt_fs_change_workers(session, lock, -1, ticket);
-
-retry:
-	while( ticket != lock->fast.owner &&
-	       (!__fs_should_wait(session, lock, ticket) || waited))
-		WT_PAUSE();
-
-	if(ticket == lock->fast.owner)
+	/* Let's try to get the lock if it looks free */
+	if((old_lock_val = lock->tcas_lock) == 0 &&
+	   WT_ATOMIC_CAS(&lock->tcas_lock, old_lock_val, 1))
 		goto done;
 	else {
-		__fs_maybewait(session, ticket, lock, whandle);
-		waited = true;
+		if(__fs_should_block(session, lock)) {
+			__fs_maybe_block(session, lock, whandle);
+		}
+		else {
+			if(!incremented_spinners) {
+				__fs_change_numspinners(session, lock, 1);
+				incremented_spinners = true;
+				//	printf("t %d: will spin\n", session->id);
+			}
+
+			/* Spin while the lock looks busy */
+			while((old_lock_val = lock->tcas_lock) != 0)
+				;
+		}
 		goto retry;
 	}
-done:
-	/* We acquired the lock, so we are now considered a worker. */
-	if(conn->fs_max_sessions > WT_FS_NUMCPUS)
-		__wt_fs_change_workers(session, lock, 1, ticket);
-#endif
 
+done:
+	if(incremented_spinners)
+		__fs_change_numspinners(session, lock, -1);
+
+	//printf("t %d: has the lock\n", session->id);
 	WT_END_LOCK(session, lock);
 	return 0;
 }
@@ -665,29 +625,16 @@ static inline int
 __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 {
 	WT_CONNECTION_IMPL *conn = S2C(session);
-	uint64_t my_ticket;
-	int num_towake;
+	int num_to_unblock;
 
 	WT_UNUSED(conn);
-	WT_UNUSED(my_ticket);
-	WT_UNUSED(num_towake);
 
 	lock->tcas_lock = 0;
-#if 0
-	WT_BEGIN_LOCK(session, lock);
 
-	my_ticket = lock->fast.owner;
+	//printf("t %d: released lock\n", session->id);
+	if((num_to_unblock = __fs_num_to_unblock(session, lock)) > 0)
+		__fs_unblock_next(session, lock, num_to_unblock);
 
-	/* Unlock the "fast" portion of the lock. */
-	++lock->fast.owner;
-
-	if(conn->fs_max_sessions > WT_FS_NUMCPUS) {
-		num_towake = __fs_get_num_wakees(session, lock);
-		__fs_wake_next_waiters(session, lock, num_towake, my_ticket);
-	}
-
-	WT_END_LOCK(session, lock);
-#endif
 	return 0;
 }
 
