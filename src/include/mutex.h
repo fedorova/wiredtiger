@@ -127,11 +127,16 @@ struct __wt_fair_lock64 {
 	uint64_t waiter;
 };
 
+struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_tas_lock {
+	volatile int lk;
+};
+
 struct __wt_fs_lock {
 	int num_spinners;
 	const char *name;
 	size_t waiters_size;
 	struct __wt_fs_whead *waiter_htable;
 	struct __wt_fair_lock config_lk;
-	volatile int tcas_lock;
+	struct __wt_tas_lock tcas_lock;
 };
+
