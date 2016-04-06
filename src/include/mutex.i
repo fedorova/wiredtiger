@@ -520,10 +520,6 @@ __fs_maybe_block(WT_SESSION_IMPL *session, WT_FS_LOCK *lock,
 //		printf("t %d: not actually blocking\n", session->id);
 	}
 
-	/* We don't recheck the condition upon awakening. Once the lock owner's
-	 * number got close to us, it cannot go back to being far.
-	 */
-
 	WT_END_FUNC(session);
 }
 
@@ -564,24 +560,30 @@ __fs_unblock_next(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, int num_to_wake) {
 static inline int
 __fs_num_to_unblock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock) {
 
-	int deficit;
+	int deficit, ret;
 
+	WT_BEGIN_FUNC(session);
 	__wt_fair_spinlock(session, &lock->config_lk);
 	deficit = TARGET_SPINNERS - lock->num_spinners;
 	__wt_fair_unlock(session, &lock->config_lk);
 
 	if(deficit > 0)
-		return deficit;
+		ret = deficit;
 	else
-		return 1;
+		ret = 1;
+
+	WT_END_FUNC(session);
+	return ret;
 }
 
 static void
 __fs_change_numspinners(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, int val) {
 
+	WT_BEGIN_FUNC(session);
 	__wt_fair_spinlock(session, &lock->config_lk);
 	lock->num_spinners += val;
 	__wt_fair_unlock(session, &lock->config_lk);
+	WT_END_FUNC(session);
 }
 
 static inline int
@@ -635,12 +637,14 @@ __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 	int num_to_unblock;
 
 	WT_UNUSED(conn);
+	WT_BEGIN_LOCK(session, lock);
 
 	lock->tcas_lock.lk = 0;
 
 	if((num_to_unblock = __fs_num_to_unblock(session, lock)) > 0)
 		__fs_unblock_next(session, lock, num_to_unblock);
 
+	WT_END_LOCK(session, lock);
 	return 0;
 }
 
