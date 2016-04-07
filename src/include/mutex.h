@@ -132,11 +132,15 @@ struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) __wt_tas_lock {
 };
 
 struct __wt_fs_lock {
-	int num_spinners;
+	int num_contenders;
 	const char *name;
 	size_t waiters_size;
 	struct __wt_fs_whead *waiter_htable;
 	struct __wt_fair_lock config_lk;
 	struct __wt_tas_lock tcas_lock;
+	struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT)
+	timespec ts_acquire;
+	struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT)
+	timespec ts_release;
 };
 

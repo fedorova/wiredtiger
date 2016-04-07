@@ -450,7 +450,7 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 	lock->name = name;
 	memset(&lock->config_lk, 0, sizeof(WT_FAIR_LOCK));
 	lock->tcas_lock.lk = 0;
-	lock->num_spinners = 0;
+	lock->num_contenders = 0;
 
 	lock->waiters_size = S2C(session)->session_size;
 
@@ -460,7 +460,7 @@ __wt_fs_init(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, const char *name)
 
 	WT_ASSERT(session, lock->waiter_htable[0].first_waiter == NULL);
 
-	printf("Using fslock with %d CPUs\n", WT_FS_NUMCPUS);
+	printf("Using fslock\n");
 
 	return 0;
 }
@@ -477,12 +477,13 @@ __wt_fs_whandle_init(WT_SESSION_IMPL *session, WT_FS_WHANDLE *wh)
 	return 0;
 }
 
-#define TARGET_SPINNERS 8
+#define TARGET_SPINNERS 16
 
 static inline bool
 __fs_should_block(WT_SESSION_IMPL *session, WT_FS_LOCK *lock) {
 
-	return (lock->num_spinners < TARGET_SPINNERS) ? false : true;
+//	return (lock->num_spinners < TARGET_SPINNERS) ? false : true;
+	return false;
 }
 static int filter = 0;
 static void
@@ -505,8 +506,8 @@ __fs_maybe_block(WT_SESSION_IMPL *session, WT_FS_LOCK *lock,
 		whandle->next = slot_head->first_waiter;
 		slot_head->first_waiter = whandle;
 
-//		printf("t %d: block, fw = %p\n", session->id,
-//		       slot_head->first_waiter);
+		printf("t %d: block, fw = %p\n", session->id,
+		       slot_head->first_waiter);
 
 		__wt_spin_lock(session, (WT_SPINLOCK*)&whandle->wh_cond->mtx);
 		__wt_fair_unlock(session, &slot_head->lk);
@@ -560,6 +561,7 @@ __fs_unblock_next(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, int num_to_wake) {
 static inline int
 __fs_num_to_unblock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock) {
 
+#if 0
 	int deficit, ret;
 
 	WT_BEGIN_FUNC(session);
@@ -574,14 +576,16 @@ __fs_num_to_unblock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock) {
 
 	WT_END_FUNC(session);
 	return ret;
+#endif
+	return 1;
 }
 
 static void
-__fs_change_numspinners(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, int val) {
+__fs_change_numcontenders(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, int val) {
 
 	WT_BEGIN_FUNC(session);
 	__wt_fair_spinlock(session, &lock->config_lk);
-	lock->num_spinners += val;
+	lock->num_contenders += val;
 	__wt_fair_unlock(session, &lock->config_lk);
 	WT_END_FUNC(session);
 }
@@ -590,12 +594,12 @@ static inline int
 __wt_fs_lock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock, WT_FS_WHANDLE *whandle)
 {
 	WT_CONNECTION_IMPL *conn = S2C(session);
-	bool incremented_spinners = false;
 	int old_lock_val;
 
 	WT_BEGIN_LOCK(session, lock);
 	WT_UNUSED(conn);
 
+//	__fs_change_numcontenders(session, lock, 1);
 //	printf("t %d: try to lock\n", session->id);
 retry:
 	/* Let's try to get the lock if it looks free */
@@ -607,12 +611,6 @@ retry:
 			__fs_maybe_block(session, lock, whandle);
 		}
 		else {
-			if(!incremented_spinners) {
-				__fs_change_numspinners(session, lock, 1);
-				incremented_spinners = true;
-				//printf("t %d: will spin\n", session->id);
-			}
-
 			/* Spin while the lock looks busy */
 			while((old_lock_val = lock->tcas_lock.lk) != 0)
 				;
@@ -621,10 +619,8 @@ retry:
 	}
 
 done:
-	if(incremented_spinners)
-		__fs_change_numspinners(session, lock, -1);
-
 	//printf("t %d: has the lock\n", session->id);
+	clock_gettime(CLOCK_REALTIME, &lock->ts_acquire);
 	WT_END_LOCK(session, lock);
 
 	return 0;
@@ -640,6 +636,9 @@ __wt_fs_unlock(WT_SESSION_IMPL *session, WT_FS_LOCK *lock)
 	WT_BEGIN_LOCK(session, lock);
 
 	lock->tcas_lock.lk = 0;
+
+	clock_gettime(CLOCK_REALTIME, &lock->ts_release);
+//	__fs_change_numcontenders(session, lock, -1);
 
 	if((num_to_unblock = __fs_num_to_unblock(session, lock)) > 0)
 		__fs_unblock_next(session, lock, num_to_unblock);
