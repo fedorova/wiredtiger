@@ -148,7 +148,8 @@ __wt_cond_signal(WT_SESSION_IMPL *session, WT_CONDVAR *cond, bool locked)
 			WT_ERR(pthread_mutex_lock(&cond->mtx));
 			unlock_here = true;
 		}
-		WT_ERR(pthread_cond_broadcast(&cond->cond));
+//		WT_ERR(pthread_cond_broadcast(&cond->cond));
+		WT_ERR(pthread_cond_signal(&cond->cond));
 	}
 
 err:	if (unlock_here)

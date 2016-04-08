@@ -142,5 +142,8 @@ struct __wt_fs_lock {
 	timespec ts_acquire;
 	struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT)
 	timespec ts_release;
+	int num_blockers;
+	struct WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT)
+	__wt_condvar *block_cond;
 };
 

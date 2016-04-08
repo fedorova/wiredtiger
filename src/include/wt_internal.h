@@ -282,6 +282,8 @@ struct __wt_split_stash;
     typedef struct __wt_split_stash WT_SPLIT_STASH;
 struct __wt_table;
     typedef struct __wt_table WT_TABLE;
+struct __wt_tas_lock;
+    typedef struct __wt_tas_lock WT_TAS_LOCK;
 struct __wt_txn;
     typedef struct __wt_txn WT_TXN;
 struct __wt_txn_global;
