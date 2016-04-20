@@ -1,5 +1,5 @@
 /*-
- * Public Domain 2014-2015 MongoDB, Inc.
+ * Public Domain 2014-2016 MongoDB, Inc.
  * Public Domain 2008-2014 WiredTiger, Inc.
  *
  * This is free and unencumbered software released into the public domain.
@@ -40,6 +40,8 @@ static int  wt_shutdown(void);
 
 extern int __wt_optind;
 extern char *__wt_optarg;
+
+void (*custom_die)(void) = NULL;
 
 int
 main(int argc, char *argv[])
@@ -134,7 +136,7 @@ main(int argc, char *argv[])
 
 	printf("%s: process %" PRIu64 "\n", g.progname, (uint64_t)getpid());
 	for (cnt = 1; (runs == 0 || cnt <= runs) && g.status == 0; ++cnt) {
-		printf("    %d: %u workers, %u tables\n",
+		printf("    %d: %d workers, %d tables\n",
 		    cnt, g.nworkers, g.ntables);
 
 		(void)cleanup();		/* Clean up previous runs */

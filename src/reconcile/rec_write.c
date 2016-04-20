@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -363,6 +363,17 @@ __wt_reconcile(WT_SESSION_IMPL *session,
 	WT_ASSERT(session, __wt_page_is_modified(page));
 
 	/*
+	 * Reconciliation locks the page for three reasons:
+	 *    Reconciliation reads the lists of page updates, obsolete updates
+	 * cannot be discarded while reconciliation is in progress;
+	 *    The compaction process reads page modification information, which
+	 * reconciliation modifies;
+	 *    In-memory splits: reconciliation of an internal page cannot handle
+	 * a child page splitting during the reconciliation.
+	 */
+	WT_RET(__wt_fair_lock(session, &page->page_lock));
+
+	/*
 	 * Check that transaction time always moves forward for a given page.
 	 * If this check fails, reconciliation can free something that a future
 	 * reconciliation will need.
@@ -375,17 +386,6 @@ __wt_reconcile(WT_SESSION_IMPL *session,
 	WT_RET(__rec_write_init(
 	    session, ref, flags, salvage, &session->reconcile));
 	r = session->reconcile;
-
-	/*
-	 * Reconciliation locks the page for three reasons:
-	 *    Reconciliation reads the lists of page updates, obsolete updates
-	 * cannot be discarded while reconciliation is in progress;
-	 *    The compaction process reads page modification information, which
-	 * reconciliation modifies;
-	 *    In-memory splits: reconciliation of an internal page cannot handle
-	 * a child page splitting during the reconciliation.
-	 */
-	WT_RET(__wt_fair_lock(session, &page->page_lock));
 
 	/* Reconcile the page. */
 	switch (page->type) {
@@ -630,12 +630,12 @@ __rec_root_write(WT_SESSION_IMPL *session, WT_PAGE *page, uint32_t flags)
 	 */
 	switch (page->type) {
 	case WT_PAGE_COL_INT:
-		WT_RET(__wt_page_alloc(session,
-		    WT_PAGE_COL_INT, 1, mod->mod_multi_entries, false, &next));
+		WT_RET(__wt_page_alloc(session, WT_PAGE_COL_INT,
+		    1, mod->mod_multi_entries, false, &next));
 		break;
 	case WT_PAGE_ROW_INT:
-		WT_RET(__wt_page_alloc(session,
-		    WT_PAGE_ROW_INT, 0, mod->mod_multi_entries, false, &next));
+		WT_RET(__wt_page_alloc(session, WT_PAGE_ROW_INT,
+		    WT_RECNO_OOB, mod->mod_multi_entries, false, &next));
 		break;
 	WT_ILLEGAL_VALUE(session);
 	}
@@ -1276,6 +1276,8 @@ __rec_txn_read(WT_SESSION_IMPL *session, WT_RECONCILE *r,
 		for (upd = upd_list; upd->next != NULL; upd = upd->next)
 			;
 		upd->next = append;
+		__wt_cache_page_inmem_incr(
+		    session, page, WT_UPDATE_MEMSIZE(append));
 	}
 
 	/*
@@ -1311,7 +1313,7 @@ __rec_txn_read(WT_SESSION_IMPL *session, WT_RECONCILE *r,
 } while (0)
 
 typedef enum {
-    WT_CHILD_IGNORE,				/* Deleted child: ignore */
+    WT_CHILD_IGNORE,				/* Ignored child */
     WT_CHILD_MODIFIED,				/* Modified child */
     WT_CHILD_ORIGINAL,				/* Original child */
     WT_CHILD_PROXY				/* Deleted child: proxy */
@@ -1448,16 +1450,15 @@ __rec_child_modify(WT_SESSION_IMPL *session,
 
 	/*
 	 * This function is called when walking an internal page to decide how
-	 * to handle child pages referenced by the internal page, specifically
-	 * if the child page is to be merged into its parent.
+	 * to handle child pages referenced by the internal page.
 	 *
 	 * Internal pages are reconciled for two reasons: first, when evicting
 	 * an internal page, second by the checkpoint code when writing internal
-	 * pages.  During eviction, the subtree is locked down so all pages
-	 * should be in the WT_REF_DISK or WT_REF_LOCKED state. During
-	 * checkpoint, any eviction that might affect our review of an internal
-	 * page is prohibited, however, as the subtree is not reserved for our
-	 * exclusive use, there are other page states that must be considered.
+	 * pages.  During eviction, all pages should be in the WT_REF_DISK or
+	 * WT_REF_DELETED state. During checkpoint, eviction that might affect
+	 * review of an internal page is prohibited, however, as the subtree is
+	 * not reserved for our exclusive use, there are other page states that
+	 * must be considered.
 	 */
 	for (;; __wt_yield(session))
 		switch (r->tested_ref_state = ref->state) {
@@ -1486,15 +1487,14 @@ __rec_child_modify(WT_SESSION_IMPL *session,
 			/*
 			 * Locked.
 			 *
-			 * If evicting, the evicted page's subtree, including
-			 * this child, was selected for eviction by us and the
-			 * state is stable until we reset it, it's an in-memory
-			 * state.  This is the expected state for a child being
-			 * merged into a page (where the page was selected by
-			 * the eviction server for eviction).
+			 * We should never be here during eviction, active child
+			 * pages in an evicted page's subtree fails the eviction
+			 * attempt.
 			 */
-			if (F_ISSET(r, WT_EVICTING))
-				goto in_memory;
+			if (F_ISSET(r, WT_EVICTING)) {
+				WT_ASSERT(session, !F_ISSET(r, WT_EVICTING));
+				return (EBUSY);
+			}
 
 			/*
 			 * If called during checkpoint, the child is being
@@ -1512,24 +1512,21 @@ __rec_child_modify(WT_SESSION_IMPL *session,
 			/*
 			 * In memory.
 			 *
-			 * If evicting, the evicted page's subtree, including
-			 * this child, was selected for eviction by us and the
-			 * state is stable until we reset it, it's an in-memory
-			 * state.  This is the expected state for a child being
-			 * merged into a page (where the page belongs to a file
-			 * being discarded from the cache during close).
+			 * We should never be here during eviction, active child
+			 * pages in an evicted page's subtree fails the eviction
+			 * attempt.
 			 */
-			if (F_ISSET(r, WT_EVICTING))
-				goto in_memory;
+			if (F_ISSET(r, WT_EVICTING)) {
+				WT_ASSERT(session, !F_ISSET(r, WT_EVICTING));
+				return (EBUSY);
+			}
 
 			/*
 			 * If called during checkpoint, acquire a hazard pointer
 			 * so the child isn't evicted, it's an in-memory case.
 			 *
-			 * This call cannot return split/restart, eviction of
-			 * pages that split into their parent is shutout during
-			 * checkpoint, all splits in process will have completed
-			 * before we walk any pages for checkpoint.
+			 * This call cannot return split/restart, we have a lock
+			 * on the parent which prevents a child page split.
 			 */
 			ret = __wt_page_in(session, ref,
 			    WT_READ_CACHE | WT_READ_NO_EVICT |
@@ -1546,29 +1543,31 @@ __rec_child_modify(WT_SESSION_IMPL *session,
 			/*
 			 * Being read, not modified by definition.
 			 *
-			 * We should never be here during eviction, a child page
-			 * in this state within an evicted page's subtree would
-			 * have caused normally eviction to fail, and exclusive
-			 * eviction shouldn't ever see pages being read.
+			 * We should never be here during eviction, active child
+			 * pages in an evicted page's subtree fails the eviction
+			 * attempt.
 			 */
-			WT_ASSERT(session, !F_ISSET(r, WT_EVICTING));
+			if (F_ISSET(r, WT_EVICTING)) {
+				WT_ASSERT(session, !F_ISSET(r, WT_EVICTING));
+				return (EBUSY);
+			}
 			goto done;
 
 		case WT_REF_SPLIT:
 			/*
 			 * The page was split out from under us.
 			 *
-			 * We should never be here during eviction, a child page
-			 * in this state within an evicted page's subtree would
-			 * have caused eviction to fail.
+			 * We should never be here during eviction, active child
+			 * pages in an evicted page's subtree fails the eviction
+			 * attempt.
 			 *
 			 * We should never be here during checkpoint, dirty page
 			 * eviction is shutout during checkpoint, all splits in
 			 * process will have completed before we walk any pages
 			 * for checkpoint.
 			 */
-			WT_ASSERT(session, ref->state != WT_REF_SPLIT);
-			/* FALLTHROUGH */
+			WT_ASSERT(session, WT_REF_SPLIT != WT_REF_SPLIT);
+			return (EBUSY);
 
 		WT_ILLEGAL_VALUE(session);
 		}
@@ -1579,11 +1578,21 @@ in_memory:
 	 * modify structure has been instantiated. If the modify structure
 	 * exists and the page has actually been modified, set that state.
 	 * If that's not the case, we would normally use the original cell's
-	 * disk address as our reference, but, if we're forced to instantiate
-	 * a deleted child page and it's never modified, we end up here with
-	 * a page that has a modify structure, no modifications, and no disk
-	 * address.  Ignore those pages, they're not modified and there is no
-	 * reason to write the cell.
+	 * disk address as our reference, however there are two special cases,
+	 * both flagged by a missing block address.
+	 *
+	 * First, if forced to instantiate a deleted child page and it's never
+	 * modified, we end up here with a page that has a modify structure, no
+	 * modifications, and no disk address. Ignore those pages, they're not
+	 * modified and there is no reason to write the cell.
+	 *
+	 * Second, insert splits are permitted during checkpoint. When doing the
+	 * final checkpoint pass, we first walk the internal page's page-index
+	 * and write out any dirty pages we find, then we write out the internal
+	 * page in post-order traversal. If we found the split page in the first
+	 * step, it will have an address; if we didn't find the split page in
+	 * the first step, it won't have an address and we ignore it, it's not
+	 * part of the checkpoint.
 	 */
 	mod = ref->page->modify;
 	if (mod != NULL && mod->rec_result != 0)
@@ -1756,7 +1765,7 @@ __rec_key_state_update(WT_RECONCILE *r, bool ovfl_key)
  *	Figure out the maximum leaf page size for the reconciliation.
  */
 static inline uint32_t
-__rec_leaf_page_max(WT_SESSION_IMPL *session,  WT_RECONCILE *r)
+__rec_leaf_page_max(WT_SESSION_IMPL *session, WT_RECONCILE *r)
 {
 	WT_BTREE *btree;
 	WT_PAGE *page;
@@ -1887,15 +1896,18 @@ __wt_split_page_size(WT_BTREE *btree, uint32_t maxpagesize)
 	 * we don't waste space when we write).
 	 */
 	a = maxpagesize;			/* Don't overflow. */
-	split_size = (uint32_t)
-	    WT_ALIGN((a * (u_int)btree->split_pct) / 100, btree->allocsize);
+	split_size = (uint32_t)WT_ALIGN_NEAREST(
+	    (a * (u_int)btree->split_pct) / 100, btree->allocsize);
 
 	/*
-	 * If the result of that calculation is the same as the allocation unit
-	 * (that happens if the maximum size is the same size as an allocation
-	 * unit, use a percentage of the maximum page size).
+	 * Respect the configured split percentage if the calculated split
+	 * size is either zero or a full page. The user has either configured
+	 * an allocation size that matches the page size, or a split
+	 * percentage that is close to zero or one hundred. Rounding is going
+	 * to provide a worse outcome than having a split point that doesn't
+	 * fall on an allocation size boundary in those cases.
 	 */
-	if (split_size == btree->allocsize)
+	if (split_size == 0 || split_size == maxpagesize)
 		split_size = (uint32_t)((a * (u_int)btree->split_pct) / 100);
 
 	return (split_size);
@@ -1948,12 +1960,21 @@ __rec_split_init(WT_SESSION_IMPL *session,
 	WT_RET(__wt_buf_init(session, &r->disk_image, corrected_page_size));
 
 	/*
-	 * Clear the disk page's header and block-manager space, set the page
-	 * type (the type doesn't change, and setting it later would require
-	 * additional code in a few different places).
+	 * Clear the disk page header to ensure all of it is initialized, even
+	 * the unused fields.
+	 *
+	 * In the case of fixed-length column-store, clear the entire buffer:
+	 * fixed-length column-store sets bits in bytes, where the bytes are
+	 * assumed to initially be 0.
+	 */
+	memset(r->disk_image.mem, 0, page->type == WT_PAGE_COL_FIX ?
+	    corrected_page_size : WT_PAGE_HEADER_SIZE);
+
+	/*
+	 * Set the page type (the type doesn't change, and setting it later
+	 * would require additional code in a few different places).
 	 */
 	dsk = r->disk_image.mem;
-	memset(dsk, 0, WT_PAGE_HEADER_BYTE_SIZE(btree));
 	dsk->type = page->type;
 
 	/*
@@ -2388,8 +2409,8 @@ __rec_split(WT_SESSION_IMPL *session, WT_RECONCILE *r, size_t next_len)
 		/* Finalize the header information and write the page. */
 		dsk->recno = last->recno;
 		dsk->u.entries = r->entries;
-		dsk->mem_size =
-		    r->disk_image.size = WT_PTRDIFF32(r->first_free, dsk);
+		dsk->mem_size = WT_PTRDIFF32(r->first_free, dsk);
+		r->disk_image.size = dsk->mem_size;
 		WT_RET(
 		    __rec_split_write(session, r, last, &r->disk_image, false));
 
@@ -2554,6 +2575,15 @@ __rec_split_raw_worker(WT_SESSION_IMPL *session,
 		    dsk->type == WT_PAGE_COL_VAR)
 			r->raw_recnos[slots] = recno;
 		r->raw_entries[slots] = entry;
+
+		/*
+		 * Don't create an image so large that any future update will
+		 * cause a split in memory.  Use half of the maximum size so
+		 * we split very compressible pages that have reached the
+		 * maximum size in memory into two equal blocks.
+		 */
+		if (len > (size_t)btree->maxmempage / 2)
+			break;
 	}
 
 	/*
@@ -2769,9 +2799,9 @@ no_slots:
 		WT_STAT_FAST_DATA_INCR(session, compress_raw_fail);
 
 		dsk->recno = last->recno;
-		dsk->mem_size =
-		    r->disk_image.size = WT_PTRDIFF32(r->first_free, dsk);
+		dsk->mem_size = WT_PTRDIFF32(r->first_free, dsk);
 		dsk->u.entries = r->entries;
+		r->disk_image.size = dsk->mem_size;
 
 		r->entries = 0;
 		r->first_free = WT_PAGE_HEADER_BYTE(btree, dsk);
@@ -2951,7 +2981,8 @@ __rec_split_finish_std(WT_SESSION_IMPL *session, WT_RECONCILE *r)
 	dsk = r->disk_image.mem;
 	dsk->recno = bnd->recno;
 	dsk->u.entries = r->entries;
-	dsk->mem_size = r->disk_image.size = WT_PTRDIFF32(r->first_free, dsk);
+	dsk->mem_size = WT_PTRDIFF32(r->first_free, dsk);
+	r->disk_image.size = dsk->mem_size;
 
 	/* If this is a checkpoint, we're done, otherwise write the page. */
 	return (__rec_is_checkpoint(session, r, bnd) ?
@@ -3014,13 +3045,13 @@ __rec_split_fixup(WT_SESSION_IMPL *session, WT_RECONCILE *r)
 	 * The data isn't laid out on a page boundary or nul padded; copy it to
 	 * a clean, aligned, padded buffer before writing it.
 	 *
-	 * Allocate a scratch buffer to hold the new disk image.  Copy the
-	 * WT_PAGE_HEADER header onto the scratch buffer, most of the header
-	 * information remains unchanged between the pages.
+	 * Allocate a scratch buffer to hold the new disk image. Copy the disk
+	 * page's header and block-manager space into the scratch buffer, most
+	 * of the header information remains unchanged between the pages.
 	 */
 	WT_RET(__wt_scr_alloc(session, r->disk_image.memsize, &tmp));
 	dsk = tmp->mem;
-	memcpy(dsk, r->disk_image.mem, WT_PAGE_HEADER_SIZE);
+	memcpy(dsk, r->disk_image.mem, WT_PAGE_HEADER_BYTE_SIZE(btree));
 
 	/*
 	 * For each split chunk we've created, update the disk image and copy
@@ -3263,7 +3294,14 @@ supd_check_complete:
 		memset(WT_BLOCK_HEADER_REF(dsk), 0, btree->block_header);
 		bnd->cksum = __wt_cksum(buf->data, buf->size);
 
-		if (mod->rec_result == WT_PM_REC_MULTIBLOCK &&
+		/*
+		 * One last check: don't reuse blocks if compacting, the reason
+		 * for compaction is to move blocks to different locations. We
+		 * do this check after calculating the checksums, hopefully the
+		 * next write can be skipped.
+		 */
+		if (session->compact_state == WT_COMPACT_NONE &&
+		    mod->rec_result == WT_PM_REC_MULTIBLOCK &&
 		    mod->mod_multi_entries > bnd_slot) {
 			multi = &mod->mod_multi[bnd_slot];
 			if (multi->size == bnd->size &&
@@ -3276,6 +3314,17 @@ supd_check_complete:
 			}
 		}
 	}
+
+	bnd->entries = r->entries;
+	/* Output a verbose message if we create a page without many entries */
+	if (WT_VERBOSE_ISSET(session, WT_VERB_SPLIT) && r->entries < 6)
+		WT_ERR(__wt_verbose(session, WT_VERB_SPLIT,
+		    "Reconciliation creating a page with %" PRIu32
+		    " entries, memory footprint %" PRIu64
+		    ", page count %" PRIu32 ", %s, split state: %d\n",
+		    r->entries, r->page->memory_footprint, r->bnd_next,
+		    F_ISSET(r, WT_EVICTING) ? "evict" : "checkpoint",
+		    r->bnd_state));
 
 	WT_ERR(__wt_bt_write(session,
 	    buf, addr, &addr_size, false, bnd->already_compressed));
@@ -3785,7 +3834,7 @@ __rec_col_int(WT_SESSION_IMPL *session, WT_RECONCILE *r, WT_PAGE *page)
 
 		switch (state) {
 		case WT_CHILD_IGNORE:
-			/* Deleted child we don't have to write. */
+			/* Ignored child. */
 			WT_CHILD_RELEASE_ERR(session, hazard, ref);
 			continue;
 
@@ -3924,17 +3973,18 @@ __rec_col_fix(WT_SESSION_IMPL *session, WT_RECONCILE *r, WT_PAGE *page)
 	WT_RET(__rec_split_init(
 	    session, r, page, page->pg_fix_recno, btree->maxleafpage));
 
+	/* Copy the original, disk-image bytes into place. */
+	memcpy(r->first_free, page->pg_fix_bitf,
+	    __bitstr_size((size_t)page->pg_fix_entries * btree->bitcnt));
+
 	/* Update any changes to the original on-page data items. */
 	WT_SKIP_FOREACH(ins, WT_COL_UPDATE_SINGLE(page)) {
 		WT_RET(__rec_txn_read(session, r, ins, NULL, NULL, &upd));
 		if (upd != NULL)
-			__bit_setv_recno(page, WT_INSERT_RECNO(ins),
-			    btree->bitcnt, ((uint8_t *)WT_UPDATE_DATA(upd))[0]);
+			__bit_setv(r->first_free,
+			    WT_INSERT_RECNO(ins) - page->pg_fix_recno,
+			    btree->bitcnt, *(uint8_t *)WT_UPDATE_DATA(upd));
 	}
-
-	/* Copy the updated, disk-image bytes into place. */
-	memcpy(r->first_free, page->pg_fix_bitf,
-	    __bitstr_size((size_t)page->pg_fix_entries * btree->bitcnt));
 
 	/* Calculate the number of entries per page remainder. */
 	entry = page->pg_fix_entries;
@@ -3943,16 +3993,47 @@ __rec_col_fix(WT_SESSION_IMPL *session, WT_RECONCILE *r, WT_PAGE *page)
 	r->recno += entry;
 
 	/* Walk any append list. */
-	WT_SKIP_FOREACH(ins, WT_COL_APPEND(page)) {
-		WT_RET(__rec_txn_read(session, r, ins, NULL, NULL, &upd));
-		if (upd == NULL)
-			continue;
+	for (ins =
+	    WT_SKIP_FIRST(WT_COL_APPEND(page));; ins = WT_SKIP_NEXT(ins)) {
+		if (ins == NULL) {
+			/*
+			 * If the page split, instantiate any missing records in
+			 * the page's name space. (Imagine record 98 is
+			 * transactionally visible, 99 wasn't created or is not
+			 * yet visible, 100 is visible. Then the page splits and
+			 * record 100 moves to another page. When we reconcile
+			 * the original page, we write record 98, then we don't
+			 * see record 99 for whatever reason. If we've moved
+			 * record 100, we don't know to write a deleted record
+			 * 99 on the page.)
+			 *
+			 * The record number recorded during the split is the
+			 * first key on the split page, that is, one larger than
+			 * the last key on this page, we have to decrement it.
+			 */
+			if ((recno =
+			    page->modify->mod_split_recno) == WT_RECNO_OOB)
+				break;
+			recno -= 1;
+
+			/*
+			 * The following loop assumes records to write, and the
+			 * previous key might have been visible.
+			 */
+			if (r->recno > recno)
+				break;
+			upd = NULL;
+		} else {
+			WT_RET(
+			    __rec_txn_read(session, r, ins, NULL, NULL, &upd));
+			recno = WT_INSERT_RECNO(ins);
+		}
 		for (;;) {
 			/*
 			 * The application may have inserted records which left
 			 * gaps in the name space.
 			 */
-			for (recno = WT_INSERT_RECNO(ins);
+			for (;
 			    nrecs > 0 && r->recno < recno;
 			    --nrecs, ++entry, ++r->recno)
 				__bit_setv(
@@ -3960,7 +4041,8 @@ __rec_col_fix(WT_SESSION_IMPL *session, WT_RECONCILE *r, WT_PAGE *page)
 
 			if (nrecs > 0) {
 				__bit_setv(r->first_free, entry, btree->bitcnt,
-				    ((uint8_t *)WT_UPDATE_DATA(upd))[0]);
+				    upd == NULL ? 0 :
+				    *(uint8_t *)WT_UPDATE_DATA(upd));
 				--nrecs;
 				++entry;
 				++r->recno;
@@ -3981,6 +4063,13 @@ __rec_col_fix(WT_SESSION_IMPL *session, WT_RECONCILE *r, WT_PAGE *page)
 			entry = 0;
 			nrecs = WT_FIX_BYTES_TO_ENTRIES(btree, r->space_avail);
 		}
+
+		/*
+		 * Execute this loop once without an insert item to catch any
+		 * missing records due to a split, then quit.
+		 */
+		if (ins == NULL)
+			break;
 	}
 
 	/* Update the counters. */
@@ -4461,11 +4550,39 @@ compare:		/*
 	}
 
 	/* Walk any append list. */
-	WT_SKIP_FOREACH(ins, WT_COL_APPEND(page)) {
-		WT_ERR(__rec_txn_read(session, r, ins, NULL, NULL, &upd));
-		if (upd == NULL)
-			continue;
-		for (n = WT_INSERT_RECNO(ins); src_recno <= n; ++src_recno) {
+	for (ins =
+	    WT_SKIP_FIRST(WT_COL_APPEND(page));; ins = WT_SKIP_NEXT(ins)) {
+		if (ins == NULL) {
+			/*
+			 * If the page split, instantiate any missing records in
+			 * the page's name space. (Imagine record 98 is
+			 * transactionally visible, 99 wasn't created or is not
+			 * yet visible, 100 is visible. Then the page splits and
+			 * record 100 moves to another page. When we reconcile
+			 * the original page, we write record 98, then we don't
+			 * see record 99 for whatever reason. If we've moved
+			 * record 100, we don't know to write a deleted record
+			 * 99 on the page.)
+			 *
+			 * Assert the recorded record number is past the end of
+			 * the page.
+			 *
+			 * The record number recorded during the split is the
+			 * first key on the split page, that is, one larger than
+			 * the last key on this page, we have to decrement it.
+			 */
+			if ((n = page->modify->mod_split_recno) == WT_RECNO_OOB)
+				break;
+			WT_ASSERT(session, n >= src_recno);
+			n -= 1;
+
+			upd = NULL;
+		} else {
+			WT_ERR(
+			    __rec_txn_read(session, r, ins, NULL, NULL, &upd));
+			n = WT_INSERT_RECNO(ins);
+		}
+		while (src_recno <= n) {
 			/*
 			 * The application may have inserted records which left
 			 * gaps in the name space, and these gaps can be huge.
@@ -4488,7 +4605,8 @@ compare:		/*
 					src_recno += skip;
 				}
 			} else {
-				deleted = WT_UPDATE_DELETED_ISSET(upd);
+				deleted = upd == NULL ||
+				    WT_UPDATE_DELETED_ISSET(upd);
 				if (!deleted) {
 					data = WT_UPDATE_DATA(upd);
 					size = upd->size;
@@ -4505,7 +4623,7 @@ compare:		/*
 				    last->size == size &&
 				    memcmp(last->data, data, size) == 0)) {
 					++rle;
-					continue;
+					goto next;
 				}
 				WT_ERR(__rec_col_var_helper(session, r,
 				    salvage, last, last_deleted, 0, rle));
@@ -4524,7 +4642,23 @@ compare:		/*
 			}
 			last_deleted = deleted;
 			rle = 1;
+
+			/*
+			 * Move to the next record. It's not a simple increment
+			 * because if it's the maximum record, incrementing it
+			 * wraps to 0 and this turns into an infinite loop.
+			 */
+next:			if (src_recno == UINT64_MAX)
+				break;
+			++src_recno;
 		}
+
+		/*
+		 * Execute this loop once without an insert item to catch any
+		 * missing records due to a split, then quit.
+		 */
+		if (ins == NULL)
+			break;
 	}
 
 	/* If we were tracking a record, write it. */
@@ -4628,10 +4762,10 @@ __rec_row_int(WT_SESSION_IMPL *session, WT_RECONCILE *r, WT_PAGE *page)
 		switch (state) {
 		case WT_CHILD_IGNORE:
 			/*
-			 * Deleted child we don't have to write.
+			 * Ignored child.
 			 *
-			 * Overflow keys referencing discarded pages are no
-			 * longer useful, schedule them for discard.  Don't
+			 * Overflow keys referencing pages we're not writing are
+			 * no longer useful, schedule them for discard.  Don't
 			 * worry about instantiation, internal page keys are
 			 * always instantiated.  Don't worry about reuse,
 			 * reusing this key in this reconciliation is unlikely.
@@ -5363,11 +5497,10 @@ __rec_split_dump_keys(WT_SESSION_IMPL *session, WT_PAGE *page, WT_RECONCILE *r)
 		switch (page->type) {
 		case WT_PAGE_ROW_INT:
 		case WT_PAGE_ROW_LEAF:
-			WT_ERR(__wt_buf_set_printable(
-			    session, tkey, bnd->key.data, bnd->key.size));
 			WT_ERR(__wt_verbose(session, WT_VERB_SPLIT,
-			    "starting key %.*s",
-			    (int)tkey->size, (const char *)tkey->data));
+			    "starting key %s",
+			    __wt_buf_set_printable(
+			    session, bnd->key.data, bnd->key.size, tkey)));
 			break;
 		case WT_PAGE_COL_FIX:
 		case WT_PAGE_COL_INT:
@@ -5964,8 +6097,9 @@ __rec_cell_build_ovfl(WT_SESSION_IMPL *session,
 		dsk->u.datalen = (uint32_t)kv->buf.size;
 		memcpy(WT_PAGE_HEADER_BYTE(btree, dsk),
 		    kv->buf.data, kv->buf.size);
-		dsk->mem_size = tmp->size =
+		dsk->mem_size =
 		    WT_PAGE_HEADER_BYTE_SIZE(btree) + (uint32_t)kv->buf.size;
+		tmp->size = dsk->mem_size;
 
 		/* Write the buffer. */
 		addr = buf;

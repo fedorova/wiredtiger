@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -47,6 +47,9 @@
  */
 #define	WT_ALIGN(n, v)							\
 	((((uintmax_t)(n)) + ((v) - 1)) & ~(((uintmax_t)(v)) - 1))
+
+#define	WT_ALIGN_NEAREST(n, v)						\
+	((((uintmax_t)(n)) + ((v) / 2)) & ~(((uintmax_t)(v)) - 1))
 
 /* Min, max. */
 #define	WT_MIN(a, b)	((a) < (b) ? (a) : (b))
@@ -195,12 +198,8 @@
 
 /* Check if a string matches a prefix. */
 #define	WT_PREFIX_MATCH(str, pfx)					\
-	(((const char *)str)[0] == ((const char *)pfx)[0] &&		\
+	(((const char *)(str))[0] == ((const char *)pfx)[0] &&		\
 	    strncmp((str), (pfx), strlen(pfx)) == 0)
-
-/* Check if a non-nul-terminated string matches a prefix. */
-#define	WT_PREFIX_MATCH_LEN(str, len, pfx)				\
-	((len) >= strlen(pfx) && WT_PREFIX_MATCH(str, pfx))
 
 /* Check if a string matches a prefix, and move past it. */
 #define	WT_PREFIX_SKIP(str, pfx)					\

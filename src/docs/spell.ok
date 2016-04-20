@@ -7,6 +7,7 @@ Atomicity
 BLOBs
 CFLAGS
 CPPFLAGS
+CRC
 Cheng
 Christoph
 Collet's
@@ -64,8 +65,10 @@ NOTFOUND
 NUMA
 NoSQL
 OPTYPE
+PPC
 PRELOAD
 README
+Rebalance
 RedHat
 RepMgr
 Riak
@@ -120,6 +123,7 @@ boolean
 booleans
 br
 btree
+btrees
 bufs
 builtin
 builtins
@@ -149,6 +153,7 @@ control's
 copydoc
 cpp
 crashless
+crc
 cursortype
 customerABC
 cv
@@ -375,9 +380,11 @@ rVv
 rdbms
 rdlock
 readlock
+readonly
 realclean
 realloc
 realloc'd
+rebalance
 recno
 recnoN
 recnum
@@ -416,6 +423,7 @@ src
 ssd
 startsync
 statlog
+stderr
 str
 strerror
 strftime
@@ -472,6 +480,7 @@ valuefmt
 vec
 versa
 vm
+vpmsum
 warmup
 whitespace
 wiredtiger

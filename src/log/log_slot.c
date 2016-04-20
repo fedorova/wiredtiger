@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -31,8 +31,8 @@ __wt_log_slot_activate(WT_SESSION_IMPL *session, WT_LOGSLOT *slot)
 	 * are reset when the slot is freed.  See log_slot_free.
 	 */
 	slot->slot_start_lsn = slot->slot_end_lsn = log->alloc_lsn;
-	slot->slot_start_offset = log->alloc_lsn.offset;
-	slot->slot_last_offset = log->alloc_lsn.offset;
+	slot->slot_start_offset = log->alloc_lsn.l.offset;
+	slot->slot_last_offset = log->alloc_lsn.l.offset;
 	slot->slot_fh = log->log_fh;
 	slot->slot_error = 0;
 	slot->slot_unbuffered = 0;
@@ -96,14 +96,13 @@ retry:
 	slot->slot_end_lsn = slot->slot_start_lsn;
 	end_offset =
 	    WT_LOG_SLOT_JOINED_BUFFERED(old_state) + slot->slot_unbuffered;
-	slot->slot_end_lsn.offset += (wt_off_t)end_offset;
-	WT_STAT_FAST_CONN_INCRV(session,
-	    log_slot_consolidated, end_offset);
+	slot->slot_end_lsn.l.offset += (uint32_t)end_offset;
+	WT_STAT_FAST_CONN_INCRV(session, log_slot_consolidated, end_offset);
 	/*
 	 * XXX Would like to change so one piece of code advances the LSN.
 	 */
 	log->alloc_lsn = slot->slot_end_lsn;
-	WT_ASSERT(session, log->alloc_lsn.file >= log->write_lsn.file);
+	WT_ASSERT(session, log->alloc_lsn.l.file >= log->write_lsn.l.file);
 	return (0);
 }
 
@@ -187,7 +186,7 @@ __wt_log_slot_switch(
 	 * because we are responsible for setting up the new slot.
 	 */
 	do {
-		WT_WITH_SLOT_LOCK(session, log,
+		WT_WITH_SLOT_LOCK(session, log, ret,
 		    ret = __log_slot_switch_internal(session, myslot, forced));
 		if (ret == EBUSY) {
 			WT_STAT_FAST_CONN_INCR(session, log_slot_switch_busy);
@@ -252,7 +251,7 @@ __wt_log_slot_new(WT_SESSION_IMPL *session)
 		/*
 		 * If we didn't find any free slots signal the worker thread.
 		 */
-		(void)__wt_cond_signal(session, conn->log_wrlsn_cond);
+		(void)__wt_cond_auto_signal(session, conn->log_wrlsn_cond);
 		__wt_yield(session);
 	}
 	/* NOTREACHED */

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -65,8 +65,8 @@ __wt_verbose(WT_SESSION_IMPL *session, int flag, const char *fmt, ...)
 	return (ret);
 #else
 	WT_UNUSED(session);
-	WT_UNUSED(fmt);
 	WT_UNUSED(flag);
+	WT_UNUSED(fmt);
 	return (0);
 #endif
 }

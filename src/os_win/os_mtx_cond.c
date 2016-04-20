@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -103,7 +103,7 @@ __wt_cond_wait_signal(
 		if ((err = GetLastError()) == ERROR_TIMEOUT)
 			*signalled = false;
 		else
-			ret = __wt_errno();
+			ret = __wt_getlasterror();
 	} else
 		ret = 0;
 

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -213,8 +213,7 @@ json_data(WT_SESSION *session,
 {
 	WT_CURSOR *cursor;
 	WT_DECL_RET;
-	size_t keystrlen;
-	ssize_t gotnolen;
+	size_t gotnolen, keystrlen;
 	uint64_t gotno, recno;
 	int nfield, nkeys, toktype, tret;
 	bool isrec;
@@ -274,9 +273,8 @@ json_data(WT_SESSION *session,
 				/* Verify the dump has recnos in order. */
 				recno++;
 				gotno = __wt_strtouq(ins->tokstart, &endp, 0);
-				gotnolen = (endp - ins->tokstart);
-				if (recno != gotno ||
-				    ins->toklen != (size_t)gotnolen) {
+				gotnolen = (size_t)(endp - ins->tokstart);
+				if (recno != gotno || ins->toklen != gotnolen) {
 					ret = util_err(session, 0,
 					    "%s: recno out of order", uri);
 					goto err;

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -175,6 +175,7 @@ struct __wt_connection_impl {
 	WT_SPINLOCK checkpoint_lock;	/* Checkpoint spinlock */
 	WT_SPINLOCK dhandle_lock;	/* Data handle list spinlock */
 	WT_SPINLOCK fh_lock;		/* File handle queue spinlock */
+	WT_SPINLOCK metadata_lock;	/* Metadata update spinlock */
 	WT_SPINLOCK reconfig_lock;	/* Single thread reconfigure */
 	WT_SPINLOCK schema_lock;	/* Schema operation spinlock */
 	WT_SPINLOCK table_lock;		/* Table creation spinlock */
@@ -298,9 +299,10 @@ struct __wt_connection_impl {
 #define	WT_CONN_STAT_ALL	0x01	/* "all" statistics configured */
 #define	WT_CONN_STAT_CLEAR	0x02	/* clear after gathering */
 #define	WT_CONN_STAT_FAST	0x04	/* "fast" statistics configured */
-#define	WT_CONN_STAT_NONE	0x08	/* don't gather statistics */
-#define	WT_CONN_STAT_ON_CLOSE	0x10	/* output statistics on close */
-#define	WT_CONN_STAT_SIZE	0x20	/* "size" statistics configured */
+#define	WT_CONN_STAT_JSON	0x08	/* output JSON format */
+#define	WT_CONN_STAT_NONE	0x10	/* don't gather statistics */
+#define	WT_CONN_STAT_ON_CLOSE	0x20	/* output statistics on close */
+#define	WT_CONN_STAT_SIZE	0x40	/* "size" statistics configured */
 	uint32_t stat_flags;
 
 					/* Connection statistics */
@@ -331,7 +333,7 @@ struct __wt_connection_impl {
 	bool		 stat_tid_set;	/* Statistics log thread set */
 	WT_CONDVAR	*stat_cond;	/* Statistics log wait mutex */
 	const char	*stat_format;	/* Statistics log timestamp format */
-	FILE		*stat_fp;	/* Statistics log file handle */
+	WT_FSTREAM	*stat_fs;	/* Statistics log stream */
 	char		*stat_path;	/* Statistics log path format */
 	char	       **stat_sources;	/* Statistics log list of objects */
 	const char	*stat_stamp;	/* Statistics log entry timestamp */
@@ -364,6 +366,7 @@ struct __wt_connection_impl {
 	uint32_t	 txn_logsync;	/* Log sync configuration */
 
 	WT_SESSION_IMPL *meta_ckpt_session;/* Metadata checkpoint session */
+	uint64_t	 meta_uri_hash;	/* Metadata file name hash */
 
 	WT_SESSION_IMPL *sweep_session;	   /* Handle sweep session */
 	wt_thread_t	 sweep_tid;	   /* Handle sweep thread */
@@ -415,7 +418,28 @@ struct __wt_connection_impl {
 	uint32_t direct_io;
 	uint32_t write_through;		/* FILE_FLAG_WRITE_THROUGH type flags */
 	bool	 mmap;			/* mmap configuration */
+	int page_size;			/* OS page size for mmap alignment */
 	uint32_t verbose;
+
+	void *inmemory;			/* In-memory configuration cookie */
+
+#define	WT_STDERR(s)	(&S2C(s)->wt_stderr)
+#define	WT_STDOUT(s)	(&S2C(s)->wt_stdout)
+	WT_FSTREAM wt_stderr, wt_stdout;
+
+	/*
+	 * OS library/system call jump table, to support in-memory and readonly
+	 * configurations as well as special devices with other non-POSIX APIs.
+	 */
+	int	(*file_directory_list)(WT_SESSION_IMPL *,
+		    const char *, const char *, uint32_t, char ***, u_int *);
+	int	(*file_directory_sync)(WT_SESSION_IMPL *, const char *);
+	int	(*file_exist)(WT_SESSION_IMPL *, const char *, bool *);
+	int	(*file_remove)(WT_SESSION_IMPL *, const char *);
+	int	(*file_rename)(WT_SESSION_IMPL *, const char *, const char *);
+	int	(*file_size)(WT_SESSION_IMPL *, const char *, bool, wt_off_t *);
+	int	(*file_open)(WT_SESSION_IMPL *,
+		    WT_FH *, const char *, uint32_t, uint32_t);
 
 	uint32_t flags;
 };

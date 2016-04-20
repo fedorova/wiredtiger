@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -320,6 +320,12 @@ __wt_fair_lock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 			__wt_sleep(0, 10);
 	}
 
+	/*
+	 * Applications depend on a barrier here so that operations holding the
+	 * lock see consistent data.
+	 */
+	WT_READ_BARRIER();
+
 	return (0);
 }
 
@@ -331,6 +337,12 @@ static inline int
 __wt_fair_unlock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 {
 	WT_UNUSED(session);
+
+	/*
+	 * Ensure that all updates made while the lock was held are visible to
+	 * the next thread to acquire the lock.
+	 */
+	WT_WRITE_BARRIER();
 
 	/*
 	 * We have exclusive access - the update does not need to be atomic.

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -103,7 +103,6 @@ __clsm_enter_update(WT_CURSOR_LSM *clsm)
 	bool hard_limit, have_primary, ovfl;
 
 	lsm_tree = clsm->lsm_tree;
-	ovfl = false;
 	session = (WT_SESSION_IMPL *)clsm->iface.session;
 
 	if (clsm->nchunks == 0) {
@@ -254,7 +253,7 @@ __clsm_enter(WT_CURSOR_LSM *clsm, bool reset, bool update)
 		    (!update && F_ISSET(clsm, WT_CLSM_OPEN_READ))))
 			break;
 
-open:		WT_WITH_SCHEMA_LOCK(session,
+open:		WT_WITH_SCHEMA_LOCK(session, ret,
 		    ret = __clsm_open_cursors(clsm, update, 0, 0));
 		WT_RET(ret);
 	}
@@ -710,7 +709,7 @@ __wt_clsm_init_merge(
 		F_SET(clsm, WT_CLSM_MINOR_MERGE);
 	clsm->nchunks = nchunks;
 
-	WT_WITH_SCHEMA_LOCK(session,
+	WT_WITH_SCHEMA_LOCK(session, ret,
 	    ret = __clsm_open_cursors(clsm, false, start_chunk, start_id));
 	return (ret);
 }
@@ -1155,7 +1154,6 @@ __clsm_search_near(WT_CURSOR *cursor, int *exactp)
 	closest = NULL;
 	clsm = (WT_CURSOR_LSM *)cursor;
 	exact = 0;
-	deleted = false;
 
 	CURSOR_API_CALL(cursor, session, search_near, NULL);
 	WT_CURSOR_NEEDKEY(cursor);
@@ -1501,22 +1499,22 @@ __wt_clsm_open(WT_SESSION_IMPL *session,
 {
 	WT_CONFIG_ITEM cval;
 	WT_CURSOR_STATIC_INIT(iface,
-	    __wt_cursor_get_key,	/* get-key */
-	    __wt_cursor_get_value,	/* get-value */
-	    __wt_cursor_set_key,	/* set-key */
-	    __wt_cursor_set_value,	/* set-value */
-	    __clsm_compare,		/* compare */
-	    __wt_cursor_equals,		/* equals */
-	    __clsm_next,		/* next */
-	    __clsm_prev,		/* prev */
-	    __clsm_reset,		/* reset */
-	    __clsm_search,		/* search */
-	    __clsm_search_near,		/* search-near */
-	    __clsm_insert,		/* insert */
-	    __clsm_update,		/* update */
-	    __clsm_remove,		/* remove */
-	    __wt_cursor_reconfigure,	/* reconfigure */
-	    __wt_clsm_close);		/* close */
+	    __wt_cursor_get_key,		/* get-key */
+	    __wt_cursor_get_value,		/* get-value */
+	    __wt_cursor_set_key,		/* set-key */
+	    __wt_cursor_set_value,		/* set-value */
+	    __clsm_compare,			/* compare */
+	    __wt_cursor_equals,			/* equals */
+	    __clsm_next,			/* next */
+	    __clsm_prev,			/* prev */
+	    __clsm_reset,			/* reset */
+	    __clsm_search,			/* search */
+	    __clsm_search_near,			/* search-near */
+	    __clsm_insert,			/* insert */
+	    __clsm_update,			/* update */
+	    __clsm_remove,			/* remove */
+	    __wt_cursor_reconfigure,		/* reconfigure */
+	    __wt_clsm_close);			/* close */
 	WT_CURSOR *cursor;
 	WT_CURSOR_LSM *clsm;
 	WT_DECL_RET;
@@ -1556,7 +1554,7 @@ __wt_clsm_open(WT_SESSION_IMPL *session,
 	WT_ERR(ret);
 
 	/* Make sure we have exclusive access if and only if we want it */
-	WT_ASSERT(session, !bulk || lsm_tree->exclusive);
+	WT_ASSERT(session, !bulk || lsm_tree->excl_session != NULL);
 
 	WT_ERR(__wt_calloc_one(session, &clsm));
 

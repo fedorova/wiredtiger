@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -31,22 +31,22 @@
 	NULL,				/* uri */			\
 	NULL,				/* key_format */		\
 	NULL,				/* value_format */		\
-	(int (*)(WT_CURSOR *, ...))(get_key),				\
-	(int (*)(WT_CURSOR *, ...))(get_value),				\
-	(void (*)(WT_CURSOR *, ...))(set_key),				\
-	(void (*)(WT_CURSOR *, ...))(set_value),			\
-	(int (*)(WT_CURSOR *, WT_CURSOR *, int *))(compare),		\
-	(int (*)(WT_CURSOR *, WT_CURSOR *, int *))(equals),		\
+	get_key,							\
+	get_value,							\
+	set_key,							\
+	set_value,							\
+	compare,							\
+	equals,								\
 	next,								\
 	prev,								\
 	reset,								\
 	search,								\
-	(int (*)(WT_CURSOR *, int *))(search_near),			\
+	search_near,							\
 	insert,								\
 	update,								\
 	remove,								\
 	close,								\
-	(int (*)(WT_CURSOR *, const char *))(reconfigure),		\
+	reconfigure,							\
 	{ NULL, NULL },			/* TAILQ_ENTRY q */		\
 	0,				/* recno key */			\
 	{ 0 },				/* recno raw buffer */		\
@@ -67,7 +67,7 @@ struct __wt_cursor_backup {
 	WT_CURSOR iface;
 
 	size_t next;			/* Cursor position */
-	FILE *bfp;			/* Backup file */
+	WT_FSTREAM *bfs;		/* Backup file stream */
 	uint32_t maxid;			/* Maximum log file ID seen */
 
 	WT_CURSOR_BACKUP_ENTRY *list;	/* List of files to be copied. */
@@ -102,6 +102,14 @@ struct __wt_cursor_btree {
 	uint32_t page_deleted_count;	/* Deleted items on the page */
 
 	uint64_t recno;			/* Record number */
+
+	/*
+	 * Next-random cursors can optionally be configured to step through a
+	 * percentage of the total leaf pages to their next value. Note the
+	 * configured value and the calculated number of leaf pages to skip.
+	 */
+	uint64_t next_random_leaf_skip;
+	u_int	 next_random_sample_size;
 
 	/*
 	 * The search function sets compare to:
@@ -192,18 +200,24 @@ struct __wt_cursor_btree {
 
 	uint8_t	append_tree;		/* Cursor appended to the tree */
 
+#ifdef HAVE_DIAGNOSTIC
+	/* Check that cursor next/prev never returns keys out-of-order. */
+	WT_ITEM *lastkey, _lastkey;
+	uint64_t lastrecno;
+#endif
+
 #define	WT_CBT_ACTIVE		0x01	/* Active in the tree */
 #define	WT_CBT_ITERATE_APPEND	0x02	/* Col-store: iterating append list */
 #define	WT_CBT_ITERATE_NEXT	0x04	/* Next iteration configuration */
 #define	WT_CBT_ITERATE_PREV	0x08	/* Prev iteration configuration */
-#define	WT_CBT_MAX_RECORD	0x10	/* Col-store: past end-of-table */
-#define	WT_CBT_NO_TXN   	0x20	/* Non-transactional cursor
+#define	WT_CBT_NO_TXN   	0x10	/* Non-transactional cursor
 					   (e.g. on a checkpoint) */
-#define	WT_CBT_SEARCH_SMALLEST	0x40	/* Row-store: small-key insert list */
+#define	WT_CBT_SEARCH_SMALLEST	0x20	/* Row-store: small-key insert list */
+#define	WT_CBT_VAR_ONPAGE_MATCH	0x40	/* Var-store: on-page recno match */
 
 #define	WT_CBT_POSITION_MASK		/* Flags associated with position */ \
 	(WT_CBT_ITERATE_APPEND | WT_CBT_ITERATE_NEXT | WT_CBT_ITERATE_PREV | \
-	WT_CBT_MAX_RECORD | WT_CBT_SEARCH_SMALLEST)
+	WT_CBT_SEARCH_SMALLEST | WT_CBT_VAR_ONPAGE_MATCH)
 
 	uint8_t flags;
 };
@@ -274,9 +288,12 @@ struct __wt_cursor_join_iter {
 	WT_SESSION_IMPL		*session;
 	WT_CURSOR_JOIN		*cjoin;
 	WT_CURSOR_JOIN_ENTRY	*entry;
-	WT_CURSOR		*cursor;
-	WT_ITEM			*curkey;
-	bool			 advance;
+	WT_CURSOR		*cursor;	/* has null projection */
+	WT_CURSOR		*main;		/* main table with projection */
+	WT_ITEM			*curkey;	/* primary key */
+	WT_ITEM			 idxkey;
+	bool			 positioned;
+	bool			 isequal;	/* advancing means we're done */
 };
 
 struct __wt_cursor_join_endpoint {
@@ -289,14 +306,18 @@ struct __wt_cursor_join_endpoint {
 #define	WT_CURJOIN_END_GT	0x04		/* include values >  cursor */
 #define	WT_CURJOIN_END_GE	(WT_CURJOIN_END_GT | WT_CURJOIN_END_EQ)
 #define	WT_CURJOIN_END_LE	(WT_CURJOIN_END_LT | WT_CURJOIN_END_EQ)
-#define	WT_CURJOIN_END_OWN_KEY	0x08		/* must free key's data */
+#define	WT_CURJOIN_END_OWN_CURSOR 0x08		/* must close cursor */
 	uint8_t			 flags;		/* range for this endpoint */
 };
+#define	WT_CURJOIN_END_RANGE(endp)					\
+	((endp)->flags &						\
+	    (WT_CURJOIN_END_GT | WT_CURJOIN_END_EQ | WT_CURJOIN_END_LT))
 
 struct __wt_cursor_join_entry {
 	WT_INDEX		*index;
 	WT_CURSOR		*main;		/* raw main table cursor */
 	WT_BLOOM		*bloom;		/* Bloom filter handle */
+	char			*repack_format; /* target format for repack */
 	uint32_t		 bloom_bit_count; /* bits per item in bloom */
 	uint32_t		 bloom_hash_count; /* hash functions in bloom */
 	uint64_t		 count;		/* approx number of matches */

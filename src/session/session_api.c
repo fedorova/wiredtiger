@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -11,6 +11,20 @@
 static int __session_checkpoint(WT_SESSION *, const char *);
 static int __session_snapshot(WT_SESSION *, const char *);
 static int __session_rollback_transaction(WT_SESSION *, const char *);
+
+/*
+ * __wt_session_notsup --
+ *	Unsupported session method.
+ */
+int
+__wt_session_notsup(WT_SESSION *wt_session)
+{
+	WT_SESSION_IMPL *session;
+
+	session = (WT_SESSION_IMPL *)wt_session;
+
+	WT_RET_MSG(session, ENOTSUP, "Unsupported session method");
+}
 
 /*
  * __wt_session_reset_cursors --
@@ -26,7 +40,8 @@ __wt_session_reset_cursors(WT_SESSION_IMPL *session, bool free_buffers)
 		/* Stop when there are no positioned cursors. */
 		if (session->ncursors == 0)
 			break;
-		WT_TRET(cursor->reset(cursor));
+		if (!F_ISSET(cursor, WT_CURSTD_JOINED))
+			WT_TRET(cursor->reset(cursor));
 		/* Optionally, free the cursor buffers */
 		if (free_buffers) {
 			__wt_buf_free(session, &cursor->key);
@@ -442,8 +457,8 @@ __wt_session_create(
 {
 	WT_DECL_RET;
 
-	WT_WITH_SCHEMA_LOCK(session,
-	    WT_WITH_TABLE_LOCK(session,
+	WT_WITH_SCHEMA_LOCK(session, ret,
+	    WT_WITH_TABLE_LOCK(session, ret,
 		ret = __wt_schema_create(session, uri, config)));
 	return (ret);
 }
@@ -478,10 +493,13 @@ __session_create(WT_SESSION *wt_session, const char *uri, const char *config)
 		/*
 		 * We can't disallow type entirely, a configuration string might
 		 * innocently include it, for example, a dump/load pair.  If the
-		 * URI type prefix and the type are the same, let it go.
+		 * underlying type is "file", it's OK ("file" is the underlying
+		 * type for every type); if the URI type prefix and the type are
+		 * the same, let it go.
 		 */
 		if ((ret =
 		    __wt_config_getones(session, config, "type", &cval)) == 0 &&
+		    !WT_STRING_MATCH("file", cval.str, cval.len) &&
 		    (strncmp(uri, cval.str, cval.len) != 0 ||
 		    uri[cval.len] != ':'))
 			WT_ERR_MSG(session, EINVAL,
@@ -492,6 +510,20 @@ __session_create(WT_SESSION *wt_session, const char *uri, const char *config)
 	ret = __wt_session_create(session, uri, config);
 
 err:	API_END_RET_NOTFOUND_MAP(session, ret);
+}
+
+/*
+ * __session_create_readonly --
+ *	WT_SESSION->create method; readonly version.
+ */
+static int
+__session_create_readonly(
+    WT_SESSION *wt_session, const char *uri, const char *config)
+{
+	WT_UNUSED(uri);
+	WT_UNUSED(config);
+
+	return (__wt_session_notsup(wt_session));
 }
 
 /*
@@ -532,6 +564,18 @@ err:	API_END_RET(session, ret);
 }
 
 /*
+ * __session_log_flush_readonly --
+ *	WT_SESSION->log_flush method; readonly version.
+ */
+static int
+__session_log_flush_readonly(WT_SESSION *wt_session, const char *config)
+{
+	WT_UNUSED(config);
+
+	return (__wt_session_notsup(wt_session));
+}
+
+/*
  * __session_log_printf --
  *	WT_SESSION->log_printf method.
  */
@@ -554,6 +598,56 @@ err:	API_END_RET(session, ret);
 }
 
 /*
+ * __session_log_printf_readonly --
+ *	WT_SESSION->log_printf method; readonly version.
+ */
+static int
+__session_log_printf_readonly(WT_SESSION *wt_session, const char *fmt, ...)
+    WT_GCC_FUNC_ATTRIBUTE((format (printf, 2, 3)))
+{
+	WT_UNUSED(fmt);
+
+	return (__wt_session_notsup(wt_session));
+}
+
+/*
+ * __session_rebalance --
+ *	WT_SESSION->rebalance method.
+ */
+static int
+__session_rebalance(WT_SESSION *wt_session, const char *uri, const char *config)
+{
+	WT_DECL_RET;
+	WT_SESSION_IMPL *session;
+
+	session = (WT_SESSION_IMPL *)wt_session;
+
+	SESSION_API_CALL(session, rebalance, config, cfg);
+
+	/* Block out checkpoints to avoid spurious EBUSY errors. */
+	WT_WITH_CHECKPOINT_LOCK(session, ret,
+	    WT_WITH_SCHEMA_LOCK(session, ret,
+		ret = __wt_schema_worker(session, uri, __wt_bt_rebalance,
+		NULL, cfg, WT_DHANDLE_EXCLUSIVE | WT_BTREE_REBALANCE)));
+
+err:	API_END_RET_NOTFOUND_MAP(session, ret);
+}
+
+/*
+ * __session_rebalance_readonly --
+ *	WT_SESSION->rebalance method; readonly version.
+ */
+static int
+__session_rebalance_readonly(
+    WT_SESSION *wt_session, const char *uri, const char *config)
+{
+	WT_UNUSED(uri);
+	WT_UNUSED(config);
+
+	return (__wt_session_notsup(wt_session));
+}
+
+/*
  * __session_rename --
  *	WT_SESSION->rename method.
  */
@@ -571,11 +665,27 @@ __session_rename(WT_SESSION *wt_session,
 	WT_ERR(__wt_str_name_check(session, uri));
 	WT_ERR(__wt_str_name_check(session, newuri));
 
-	WT_WITH_SCHEMA_LOCK(session,
-	    WT_WITH_TABLE_LOCK(session,
-		ret = __wt_schema_rename(session, uri, newuri, cfg)));
+	WT_WITH_CHECKPOINT_LOCK(session, ret,
+	    WT_WITH_SCHEMA_LOCK(session, ret,
+		WT_WITH_TABLE_LOCK(session, ret,
+		    ret = __wt_schema_rename(session, uri, newuri, cfg))));
 
 err:	API_END_RET_NOTFOUND_MAP(session, ret);
+}
+
+/*
+ * __session_rename_readonly --
+ *	WT_SESSION->rename method; readonly version.
+ */
+static int
+__session_rename_readonly(WT_SESSION *wt_session,
+    const char *uri, const char *newuri, const char *config)
+{
+	WT_UNUSED(uri);
+	WT_UNUSED(newuri);
+	WT_UNUSED(config);
+
+	return (__wt_session_notsup(wt_session));
 }
 
 /*
@@ -611,10 +721,23 @@ int
 __wt_session_drop(WT_SESSION_IMPL *session, const char *uri, const char *cfg[])
 {
 	WT_DECL_RET;
+	WT_CONFIG_ITEM cval;
+	bool lock_wait;
 
-	WT_WITH_SCHEMA_LOCK(session,
-	    WT_WITH_TABLE_LOCK(session,
-		ret = __wt_schema_drop(session, uri, cfg)));
+	WT_RET(__wt_config_gets_def(session, cfg, "lock_wait", 1, &cval));
+	lock_wait = cval.val != 0 || F_ISSET(session, WT_SESSION_LOCK_NO_WAIT);
+
+	if (!lock_wait)
+		F_SET(session, WT_SESSION_LOCK_NO_WAIT);
+
+	WT_WITH_CHECKPOINT_LOCK(session, ret,
+	    WT_WITH_SCHEMA_LOCK(session, ret,
+		WT_WITH_TABLE_LOCK(session, ret,
+		    ret = __wt_schema_drop(session, uri, cfg))));
+
+	if (!lock_wait)
+		F_CLR(session, WT_SESSION_LOCK_NO_WAIT);
+
 	return (ret);
 }
 
@@ -641,6 +764,20 @@ err:	/* Note: drop operations cannot be unrolled (yet?). */
 }
 
 /*
+ * __session_drop_readonly --
+ *	WT_SESSION->drop method; readonly version.
+ */
+static int
+__session_drop_readonly(
+    WT_SESSION *wt_session, const char *uri, const char *config)
+{
+	WT_UNUSED(uri);
+	WT_UNUSED(config);
+
+	return (__wt_session_notsup(wt_session));
+}
+
+/*
  * __session_join --
  *	WT_SESSION->join method.
  */
@@ -648,6 +785,7 @@ static int
 __session_join(WT_SESSION *wt_session, WT_CURSOR *join_cursor,
     WT_CURSOR *ref_cursor, const char *config)
 {
+	WT_CURSOR *firstcg;
 	WT_CONFIG_ITEM cval;
 	WT_CURSOR_INDEX *cindex;
 	WT_CURSOR_JOIN *cjoin;
@@ -661,6 +799,7 @@ __session_join(WT_SESSION *wt_session, WT_CURSOR *join_cursor,
 	uint8_t flags, range;
 
 	count = 0;
+	firstcg = NULL;
 	session = (WT_SESSION_IMPL *)wt_session;
 	SESSION_API_CALL(session, join, config, cfg);
 	table = NULL;
@@ -672,15 +811,18 @@ __session_join(WT_SESSION *wt_session, WT_CURSOR *join_cursor,
 		cindex = (WT_CURSOR_INDEX *)ref_cursor;
 		idx = cindex->index;
 		table = cindex->table;
-		WT_CURSOR_CHECKKEY(ref_cursor);
+		firstcg = cindex->cg_cursors[0];
 	} else if (WT_PREFIX_MATCH(ref_cursor->uri, "table:")) {
 		idx = NULL;
 		ctable = (WT_CURSOR_TABLE *)ref_cursor;
 		table = ctable->table;
-		WT_CURSOR_CHECKKEY(ctable->cg_cursors[0]);
+		firstcg = ctable->cg_cursors[0];
 	} else
 		WT_ERR_MSG(session, EINVAL, "not an index or table cursor");
 
+	if (!F_ISSET(firstcg, WT_CURSTD_KEY_SET))
+		WT_ERR_MSG(session, EINVAL,
+		    "requires reference cursor be positioned");
 	cjoin = (WT_CURSOR_JOIN *)join_cursor;
 	if (cjoin->table != table)
 		WT_ERR_MSG(session, EINVAL,
@@ -771,71 +913,62 @@ __session_salvage(WT_SESSION *wt_session, const char *uri, const char *config)
 		WT_ERR(ENOTSUP);
 
 	/* Block out checkpoints to avoid spurious EBUSY errors. */
-	WT_WITH_CHECKPOINT_LOCK(session,
-	    WT_WITH_SCHEMA_LOCK(session, ret =
-		__wt_schema_worker(session, uri, __wt_salvage,
+	WT_WITH_CHECKPOINT_LOCK(session, ret,
+	    WT_WITH_SCHEMA_LOCK(session, ret,
+		ret = __wt_schema_worker(session, uri, __wt_salvage,
 		NULL, cfg, WT_DHANDLE_EXCLUSIVE | WT_BTREE_SALVAGE)));
 
 err:	API_END_RET_NOTFOUND_MAP(session, ret);
 }
 
 /*
- * __session_truncate --
- *	WT_SESSION->truncate method.
+ * __session_salvage_readonly --
+ *	WT_SESSION->salvage method; readonly version.
  */
 static int
-__session_truncate(WT_SESSION *wt_session,
-    const char *uri, WT_CURSOR *start, WT_CURSOR *stop, const char *config)
+__session_salvage_readonly(
+    WT_SESSION *wt_session, const char *uri, const char *config)
 {
-	WT_DECL_RET;
-	WT_SESSION_IMPL *session;
+	WT_UNUSED(uri);
+	WT_UNUSED(config);
+
+	return (__wt_session_notsup(wt_session));
+}
+
+/*
+ * __wt_session_range_truncate --
+ *	Session handling of a range truncate.
+ */
+int
+__wt_session_range_truncate(WT_SESSION_IMPL *session,
+    const char *uri, WT_CURSOR *start, WT_CURSOR *stop)
+{
 	WT_CURSOR *cursor;
+	WT_DECL_RET;
 	int cmp;
 	bool local_start;
 
 	local_start = false;
-
-	session = (WT_SESSION_IMPL *)wt_session;
-	SESSION_TXN_API_CALL(session, truncate, config, cfg);
-	WT_STAT_FAST_CONN_INCR(session, cursor_truncate);
-
-	/*
-	 * If the URI is specified, we don't need a start/stop, if start/stop
-	 * is specified, we don't need a URI.  One exception is the log URI
-	 * which may truncate (archive) log files for a backup cursor.
-	 *
-	 * If no URI is specified, and both cursors are specified, start/stop
-	 * must reference the same object.
-	 *
-	 * Any specified cursor must have been initialized.
-	 */
-	if ((uri == NULL && start == NULL && stop == NULL) ||
-	    (uri != NULL && !WT_PREFIX_MATCH(uri, "log:") &&
-	    (start != NULL || stop != NULL)))
-		WT_ERR_MSG(session, EINVAL,
-		    "the truncate method should be passed either a URI or "
-		    "start/stop cursors, but not both");
-
 	if (uri != NULL) {
-		/* Disallow objects in the WiredTiger name space. */
-		WT_ERR(__wt_str_name_check(session, uri));
-
-		if (WT_PREFIX_MATCH(uri, "log:")) {
+		WT_ASSERT(session, WT_PREFIX_MATCH(uri, "file:"));
+		/*
+		 * A URI file truncate becomes a range truncate where we
+		 * set a start cursor at the beginning.  We already
+		 * know the NULL stop goes to the end of the range.
+		 */
+		WT_ERR(__session_open_cursor(
+		    (WT_SESSION *)session, uri, NULL, NULL, &start));
+		local_start = true;
+		ret = start->next(start);
+		if (ret == WT_NOTFOUND) {
 			/*
-			 * Verify the user only gave the URI prefix and not
-			 * a specific target name after that.
+			 * If there are no elements, there is nothing
+			 * to do.
 			 */
-			if (!WT_STREQ(uri, "log:"))
-				WT_ERR_MSG(session, EINVAL,
-				    "the truncate method should not specify any"
-				    "target after the log: URI prefix.");
-			ret = __wt_log_truncate_files(session, start, cfg);
-		} else
-			/* Wait for checkpoints to avoid EBUSY errors. */
-			WT_WITH_CHECKPOINT_LOCK(session,
-			    WT_WITH_SCHEMA_LOCK(session,
-				ret = __wt_schema_truncate(session, uri, cfg)));
-		goto done;
+			ret = 0;
+			goto done;
+		}
+		WT_ERR(ret);
 	}
 
 	/*
@@ -893,7 +1026,7 @@ __session_truncate(WT_SESSION *wt_session,
 	 */
 	if (start == NULL) {
 		WT_ERR(__session_open_cursor(
-		    wt_session, stop->uri, NULL, NULL, &start));
+		    (WT_SESSION *)session, stop->uri, NULL, NULL, &start));
 		local_start = true;
 		WT_ERR(start->next(start));
 	}
@@ -910,18 +1043,93 @@ __session_truncate(WT_SESSION *wt_session,
 	WT_ERR(__wt_schema_range_truncate(session, start, stop));
 
 done:
-err:	TXN_API_END_RETRY(session, ret, 0);
-
-	/*
+err:	/*
 	 * Close any locally-opened start cursor.
 	 */
 	if (local_start)
 		WT_TRET(start->close(start));
+	return (ret);
+}
+
+/*
+ * __session_truncate --
+ *	WT_SESSION->truncate method.
+ */
+static int
+__session_truncate(WT_SESSION *wt_session,
+    const char *uri, WT_CURSOR *start, WT_CURSOR *stop, const char *config)
+{
+	WT_DECL_RET;
+	WT_SESSION_IMPL *session;
+
+	session = (WT_SESSION_IMPL *)wt_session;
+	SESSION_TXN_API_CALL(session, truncate, config, cfg);
+	WT_STAT_FAST_CONN_INCR(session, cursor_truncate);
+
+	/*
+	 * If the URI is specified, we don't need a start/stop, if start/stop
+	 * is specified, we don't need a URI.  One exception is the log URI
+	 * which may truncate (archive) log files for a backup cursor.
+	 *
+	 * If no URI is specified, and both cursors are specified, start/stop
+	 * must reference the same object.
+	 *
+	 * Any specified cursor must have been initialized.
+	 */
+	if ((uri == NULL && start == NULL && stop == NULL) ||
+	    (uri != NULL && !WT_PREFIX_MATCH(uri, "log:") &&
+	    (start != NULL || stop != NULL)))
+		WT_ERR_MSG(session, EINVAL,
+		    "the truncate method should be passed either a URI or "
+		    "start/stop cursors, but not both");
+
+	if (uri != NULL) {
+		/* Disallow objects in the WiredTiger name space. */
+		WT_ERR(__wt_str_name_check(session, uri));
+
+		if (WT_PREFIX_MATCH(uri, "log:")) {
+			/*
+			 * Verify the user only gave the URI prefix and not
+			 * a specific target name after that.
+			 */
+			if (!WT_STREQ(uri, "log:"))
+				WT_ERR_MSG(session, EINVAL,
+				    "the truncate method should not specify any"
+				    "target after the log: URI prefix.");
+			WT_ERR(__wt_log_truncate_files(session, start, cfg));
+		} else if (WT_PREFIX_MATCH(uri, "file:"))
+			WT_ERR(__wt_session_range_truncate(
+			    session, uri, start, stop));
+		else
+			/* Wait for checkpoints to avoid EBUSY errors. */
+			WT_WITH_CHECKPOINT_LOCK(session, ret,
+			    WT_WITH_SCHEMA_LOCK(session, ret,
+				ret = __wt_schema_truncate(session, uri, cfg)));
+	} else
+		WT_ERR(__wt_session_range_truncate(session, uri, start, stop));
+
+err:	TXN_API_END_RETRY(session, ret, 0);
 
 	/*
 	 * Only map WT_NOTFOUND to ENOENT if a URI was specified.
 	 */
 	return (ret == WT_NOTFOUND && uri != NULL ? ENOENT : ret);
+}
+
+/*
+ * __session_truncate_readonly --
+ *	WT_SESSION->truncate method; readonly version.
+ */
+static int
+__session_truncate_readonly(WT_SESSION *wt_session,
+    const char *uri, WT_CURSOR *start, WT_CURSOR *stop, const char *config)
+{
+	WT_UNUSED(uri);
+	WT_UNUSED(start);
+	WT_UNUSED(stop);
+	WT_UNUSED(config);
+
+	return (__wt_session_notsup(wt_session));
 }
 
 /*
@@ -938,12 +1146,26 @@ __session_upgrade(WT_SESSION *wt_session, const char *uri, const char *config)
 
 	SESSION_API_CALL(session, upgrade, config, cfg);
 	/* Block out checkpoints to avoid spurious EBUSY errors. */
-	WT_WITH_CHECKPOINT_LOCK(session,
-	    WT_WITH_SCHEMA_LOCK(session,
+	WT_WITH_CHECKPOINT_LOCK(session, ret,
+	    WT_WITH_SCHEMA_LOCK(session, ret,
 		ret = __wt_schema_worker(session, uri, __wt_upgrade,
 		NULL, cfg, WT_DHANDLE_EXCLUSIVE | WT_BTREE_UPGRADE)));
 
 err:	API_END_RET_NOTFOUND_MAP(session, ret);
+}
+
+/*
+ * __session_upgrade_readonly --
+ *	WT_SESSION->upgrade method; readonly version.
+ */
+static int
+__session_upgrade_readonly(
+    WT_SESSION *wt_session, const char *uri, const char *config)
+{
+	WT_UNUSED(uri);
+	WT_UNUSED(config);
+
+	return (__wt_session_notsup(wt_session));
 }
 
 /*
@@ -964,8 +1186,8 @@ __session_verify(WT_SESSION *wt_session, const char *uri, const char *config)
 		WT_ERR(ENOTSUP);
 
 	/* Block out checkpoints to avoid spurious EBUSY errors. */
-	WT_WITH_CHECKPOINT_LOCK(session,
-	    WT_WITH_SCHEMA_LOCK(session,
+	WT_WITH_CHECKPOINT_LOCK(session, ret,
+	    WT_WITH_SCHEMA_LOCK(session, ret,
 		ret = __wt_schema_worker(session, uri, __wt_verify,
 		NULL, cfg, WT_DHANDLE_EXCLUSIVE | WT_BTREE_VERIFY)));
 
@@ -1168,6 +1390,18 @@ err:	API_END_RET(session, ret);
 }
 
 /*
+ * __session_transaction_sync_readonly --
+ *	WT_SESSION->transaction_sync method; readonly version.
+ */
+static int
+__session_transaction_sync_readonly(WT_SESSION *wt_session, const char *config)
+{
+	WT_UNUSED(config);
+
+	return (__wt_session_notsup(wt_session));
+}
+
+/*
  * __session_checkpoint --
  *	WT_SESSION->checkpoint method.
  */
@@ -1213,6 +1447,18 @@ __session_checkpoint(WT_SESSION *wt_session, const char *config)
 	WT_TRET(__wt_session_release_resources(session));
 
 err:	API_END_RET_NOTFOUND_MAP(session, ret);
+}
+
+/*
+ * __session_checkpoint_readonly --
+ *	WT_SESSION->checkpoint method; readonly version.
+ */
+static int
+__session_checkpoint_readonly(WT_SESSION *wt_session, const char *config)
+{
+	WT_UNUSED(config);
+
+	return (__wt_session_notsup(wt_session));
 }
 
 /*
@@ -1287,6 +1533,7 @@ __open_session(WT_CONNECTION_IMPL *conn,
 		__session_join,
 		__session_log_flush,
 		__session_log_printf,
+		__session_rebalance,
 		__session_rename,
 		__session_reset,
 		__session_salvage,
@@ -1300,6 +1547,33 @@ __open_session(WT_CONNECTION_IMPL *conn,
 		__session_snapshot,
 		__session_transaction_pinned_range,
 		__session_transaction_sync
+	}, stds_readonly = {
+		NULL,
+		NULL,
+		__session_close,
+		__session_reconfigure,
+		__session_strerror,
+		__session_open_cursor,
+		__session_create_readonly,
+		__wt_session_compact_readonly,
+		__session_drop_readonly,
+		__session_join,
+		__session_log_flush_readonly,
+		__session_log_printf_readonly,
+		__session_rebalance_readonly,
+		__session_rename_readonly,
+		__session_reset,
+		__session_salvage_readonly,
+		__session_truncate_readonly,
+		__session_upgrade_readonly,
+		__session_verify,
+		__session_begin_transaction,
+		__session_commit_transaction,
+		__session_rollback_transaction,
+		__session_checkpoint_readonly,
+		__session_snapshot,
+		__session_transaction_pinned_range,
+		__session_transaction_sync_readonly
 	};
 	WT_DECL_RET;
 	WT_SESSION_IMPL *session, *session_ret;
@@ -1327,7 +1601,7 @@ __open_session(WT_CONNECTION_IMPL *conn,
 	if (i == conn->session_size)
 		WT_ERR_MSG(session, ENOMEM,
 		    "only configured to support %" PRIu32 " sessions"
-		    " (including %d additional internal sessions)",
+		    " (including %" PRIu32 " additional internal sessions)",
 		    conn->session_size, WT_EXTRA_INTERNAL_SESSIONS);
 
 	/*
@@ -1339,7 +1613,8 @@ __open_session(WT_CONNECTION_IMPL *conn,
 		conn->session_cnt = i + 1;
 
 	session_ret->id = i;
-	session_ret->iface = stds;
+	session_ret->iface =
+	    F_ISSET(conn, WT_CONN_READONLY) ? stds_readonly : stds;
 	session_ret->iface.connection = &conn->iface;
 
 	WT_ERR(__wt_cond_alloc(session, "session", false, &session_ret->cond));
@@ -1460,7 +1735,7 @@ __wt_open_session(WT_CONNECTION_IMPL *conn,
 	 */
 	if (open_metadata) {
 		WT_ASSERT(session, !F_ISSET(session, WT_SESSION_LOCKED_SCHEMA));
-		if ((ret = __wt_metadata_open(session)) != 0) {
+		if ((ret = __wt_metadata_cursor(session, NULL)) != 0) {
 			wt_session = &session->iface;
 			WT_TRET(wt_session->close(wt_session, NULL));
 			return (ret);
@@ -1503,14 +1778,11 @@ __wt_open_internal_session(WT_CONNECTION_IMPL *conn, const char *name,
 	 * deadlocked getting the cursor late in the process.  Be defensive,
 	 * get it now.
 	 */
-	if (F_ISSET(session, WT_SESSION_LOOKASIDE_CURSOR)) {
-		WT_WITHOUT_DHANDLE(session, ret =
-		    __wt_las_cursor_create(session, &session->las_cursor));
-		if (ret != 0) {
-			wt_session = &session->iface;
-			WT_TRET(wt_session->close(wt_session, NULL));
-			return (ret);
-		}
+	if (F_ISSET(session, WT_SESSION_LOOKASIDE_CURSOR) &&
+	    (ret = __wt_las_cursor_open(session, &session->las_cursor)) != 0) {
+		wt_session = &session->iface;
+		WT_TRET(wt_session->close(wt_session, NULL));
+		return (ret);
 	}
 
 	*sessionp = session;

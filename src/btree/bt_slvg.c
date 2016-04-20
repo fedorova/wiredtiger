@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -166,11 +166,13 @@ __wt_bt_salvage(WT_SESSION_IMPL *session, WT_CKPT *ckptbase, const char *cfg[])
 	WT_DECL_RET;
 	WT_STUFF *ss, stuff;
 	uint32_t i, leaf_cnt;
+	bool evict_reset;
 
 	WT_UNUSED(cfg);
 
 	btree = S2BT(session);
 	bm = btree->bm;
+	evict_reset = false;
 
 	WT_CLEAR(stuff);
 	ss = &stuff;
@@ -180,6 +182,13 @@ __wt_bt_salvage(WT_SESSION_IMPL *session, WT_CKPT *ckptbase, const char *cfg[])
 	/* Allocate temporary buffers. */
 	WT_ERR(__wt_scr_alloc(session, 0, &ss->tmp1));
 	WT_ERR(__wt_scr_alloc(session, 0, &ss->tmp2));
+
+	/*
+	 * Salvage handles its own page eviction; get exclusive access to the
+	 * file, have eviction ignore the tree entirely.
+	 */
+	WT_ERR(__wt_evict_file_exclusive_on(session));
+	evict_reset = true;
 
 	/*
 	 * Step 1:
@@ -340,6 +349,9 @@ err:	WT_TRET(bm->salvage_end(bm, session));
 	/* Discard any root page we created. */
 	if (ss->root_ref.page != NULL)
 		__wt_ref_out(session, &ss->root_ref);
+
+	if (evict_reset)
+	    __wt_evict_file_exclusive_off(session);
 
 	/* Discard the leaf and overflow page memory. */
 	WT_TRET(__slvg_cleanup(session, ss));
@@ -595,22 +607,18 @@ __slvg_trk_leaf(WT_SESSION_IMPL *session,
 		WT_ERR(__wt_row_leaf_key_copy(session, page,
 		    &page->pg_row_d[page->pg_row_entries - 1], &trk->row_stop));
 
-		if (WT_VERBOSE_ISSET(session, WT_VERB_SALVAGE)) {
-			WT_ERR(__wt_buf_set_printable(session, ss->tmp1,
-			    trk->row_start.data, trk->row_start.size));
-			WT_ERR(__wt_verbose(session, WT_VERB_SALVAGE,
-			    "%s start key %.*s",
-			    __wt_addr_string(session,
-			    trk->trk_addr, trk->trk_addr_size, ss->tmp2),
-			    (int)ss->tmp1->size, (char *)ss->tmp1->data));
-			WT_ERR(__wt_buf_set_printable(session, ss->tmp1,
-			    trk->row_stop.data, trk->row_stop.size));
-			WT_ERR(__wt_verbose(session, WT_VERB_SALVAGE,
-			    "%s stop key %.*s",
-			    __wt_addr_string(session,
-			    trk->trk_addr, trk->trk_addr_size, ss->tmp2),
-			    (int)ss->tmp1->size, (char *)ss->tmp1->data));
-		}
+		WT_ERR(__wt_verbose(session, WT_VERB_SALVAGE,
+		    "%s start key %s",
+		    __wt_addr_string(session,
+		    trk->trk_addr, trk->trk_addr_size, ss->tmp1),
+		    __wt_buf_set_printable(session,
+		    trk->row_start.data, trk->row_start.size, ss->tmp2)));
+		WT_ERR(__wt_verbose(session, WT_VERB_SALVAGE,
+		    "%s stop key %s",
+		    __wt_addr_string(session,
+		    trk->trk_addr, trk->trk_addr_size, ss->tmp1),
+		    __wt_buf_set_printable(session,
+		    trk->row_stop.data, trk->row_stop.size, ss->tmp2)));
 
 		/* Row-store pages can contain overflow items. */
 		WT_ERR(__slvg_trk_leaf_ovfl(session, dsk, trk));
@@ -1210,8 +1218,7 @@ __slvg_col_build_internal(
 	__wt_root_ref_init(&ss->root_ref, page, true);
 
 	if (0) {
-err:		if (addr != NULL)
-			__wt_free(session, addr);
+err:		__wt_free(session, addr);
 		__wt_page_out(session, &page);
 	}
 	return (ret);
@@ -1807,7 +1814,7 @@ err:	if (page != NULL)
  */
 static int
 __slvg_row_build_internal(
-    WT_SESSION_IMPL *session, uint32_t leaf_cnt,  WT_STUFF *ss)
+    WT_SESSION_IMPL *session, uint32_t leaf_cnt, WT_STUFF *ss)
 {
 	WT_ADDR *addr;
 	WT_DECL_RET;
@@ -1821,7 +1828,7 @@ __slvg_row_build_internal(
 
 	/* Allocate a row-store root (internal) page and fill it in. */
 	WT_RET(__wt_page_alloc(
-	    session, WT_PAGE_ROW_INT, 0, leaf_cnt, true, &page));
+	    session, WT_PAGE_ROW_INT, WT_RECNO_OOB, leaf_cnt, true, &page));
 	WT_ERR(__slvg_modify_init(session, page));
 
 	pindex = WT_INTL_INDEX_GET_SAFE(page);
@@ -1872,8 +1879,7 @@ __slvg_row_build_internal(
 	__wt_root_ref_init(&ss->root_ref, page, false);
 
 	if (0) {
-err:		if (addr != NULL)
-			__wt_free(session, addr);
+err:		__wt_free(session, addr);
 		__wt_page_out(session, &page);
 	}
 	return (ret);
@@ -1937,16 +1943,12 @@ __slvg_row_build_leaf(
 			    btree->collator, key, &trk->row_start, &cmp));
 			if (cmp >= 0)
 				break;
-			if (WT_VERBOSE_ISSET(session, WT_VERB_SALVAGE)) {
-				WT_ERR(__wt_buf_set_printable(session,
-				    ss->tmp1, key->data, key->size));
-				WT_ERR(__wt_verbose(session, WT_VERB_SALVAGE,
-				    "%s merge discarding leading key %.*s",
-				    __wt_addr_string(session,
-				    trk->trk_addr, trk->trk_addr_size,
-				    ss->tmp2), (int)ss->tmp1->size,
-				    (char *)ss->tmp1->data));
-			}
+			WT_ERR(__wt_verbose(session, WT_VERB_SALVAGE,
+			    "%s merge discarding leading key %.*s",
+			    __wt_addr_string(session,
+			    trk->trk_addr, trk->trk_addr_size, ss->tmp1),
+			    __wt_buf_set_printable(
+			    session, key->data, key->size, ss->tmp2)));
 			++skip_start;
 		}
 	if (F_ISSET(trk, WT_TRACK_CHECK_STOP))
@@ -1961,16 +1963,12 @@ __slvg_row_build_leaf(
 			    btree->collator, key, &trk->row_stop, &cmp));
 			if (cmp < 0)
 				break;
-			if (WT_VERBOSE_ISSET(session, WT_VERB_SALVAGE)) {
-				WT_ERR(__wt_buf_set_printable(session,
-				    ss->tmp1, key->data, key->size));
-				WT_ERR(__wt_verbose(session, WT_VERB_SALVAGE,
-				    "%s merge discarding trailing key %.*s",
-				    __wt_addr_string(session,
-				    trk->trk_addr, trk->trk_addr_size,
-				    ss->tmp2), (int)ss->tmp1->size,
-				    (char *)ss->tmp1->data));
-			}
+			WT_ERR(__wt_verbose(session, WT_VERB_SALVAGE,
+			    "%s merge discarding trailing key %.*s",
+			    __wt_addr_string(session,
+			    trk->trk_addr, trk->trk_addr_size, ss->tmp1),
+			    __wt_buf_set_printable(
+			    session, key->data, key->size, ss->tmp2)));
 			++skip_stop;
 		}
 

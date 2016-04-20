@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -185,9 +185,7 @@ __wt_txn_visible(WT_SESSION_IMPL *session, uint64_t id)
 	if (id == WT_TXN_ABORTED)
 		return (false);
 
-	/*
-	 * Read-uncommitted transactions see all other changes.
-	 */
+	/* Read-uncommitted transactions see all other changes. */
 	if (txn->isolation == WT_ISO_READ_UNCOMMITTED)
 		return (true);
 
@@ -268,6 +266,8 @@ __wt_txn_begin(WT_SESSION_IMPL *session, const char *cfg[])
 	}
 
 	F_SET(txn, WT_TXN_RUNNING);
+	if (F_ISSET(S2C(session), WT_CONN_READONLY))
+		F_SET(txn, WT_TXN_READONLY);
 	return (false);
 }
 
@@ -357,8 +357,13 @@ __wt_txn_id_alloc(WT_SESSION_IMPL *session, bool publish)
 		WT_PUBLISH(WT_SESSION_TXN_STATE(session)->id, id);
 	}
 
-	++txn_global->current;
-	 __wt_spin_unlock(session, &txn_global->id_lock);
+	/*
+	 * Even though we are in a spinlock, readers are not.  We rely on
+	 * atomic reads of the current ID to create snapshots, so for unlocked
+	 * reads to be well defined, we must use an atomic increment here.
+	 */
+	(void)__wt_atomic_addv64(&txn_global->current, 1);
+	__wt_spin_unlock(session, &txn_global->id_lock);
 	return (id);
 }
 

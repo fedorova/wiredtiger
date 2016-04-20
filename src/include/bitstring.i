@@ -1,5 +1,5 @@
 /*-
- * Public Domain 2014-2015 MongoDB, Inc.
+ * Public Domain 2014-2016 MongoDB, Inc.
  * Public Domain 2008-2014 WiredTiger, Inc.
  *
  * This is free and unencumbered software released into the public domain.
@@ -304,14 +304,4 @@ __bit_setv(uint8_t *bitf, uint64_t entry, uint8_t width, uint8_t value)
 	__BIT_SET(2, 0x02);
 	__BIT_SET(1, 0x01);
 	}
-}
-
-/*
- * __bit_setv_recno --
- *	Set a record number's bit-field value.
- */
-static inline void
-__bit_setv_recno(WT_PAGE *page, uint64_t recno, uint8_t width, uint8_t value)
-{
-	__bit_setv(page->pg_fix_bitf, recno - page->pg_fix_recno, width, value);
 }

@@ -1,5 +1,5 @@
 /*-
- * Public Domain 2014-2015 MongoDB, Inc.
+ * Public Domain 2014-2016 MongoDB, Inc.
  * Public Domain 2008-2014 WiredTiger, Inc.
  *
  * This is free and unencumbered software released into the public domain.
@@ -63,6 +63,8 @@ static int	 verbose;			/* -v flag */
 
 extern int __wt_optind;
 extern char *__wt_optarg;
+
+void (*custom_die)(void) = NULL;
 
 int
 main(int argc, char *argv[])
@@ -168,7 +170,7 @@ run(int r)
 
 	printf("\t%s: run %d\n", __wt_page_type_string(page_type), r);
 
-	CHECK(system("rm -f WiredTiger* __slvg.* __schema.*") == 0);
+	CHECK(system("rm -f WiredTiger* __slvg.*") == 0);
 	CHECK((res_fp = fopen(RSLT, "w")) != NULL);
 
 	/*

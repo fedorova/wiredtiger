@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -16,9 +16,9 @@ static int
 __config_err(WT_CONFIG *conf, const char *msg, int err)
 {
 	WT_RET_MSG(conf->session, err,
-	    "Error parsing '%.*s' at byte %u: %s",
+	    "Error parsing '%.*s' at offset %" WT_PTRDIFFT_FMT ": %s",
 	    (int)(conf->end - conf->orig), conf->orig,
-	    (u_int)(conf->cur - conf->orig), msg);
+	    conf->cur - conf->orig, msg);
 }
 
 /*
@@ -365,6 +365,9 @@ __config_next(WT_CONFIG *conf, WT_CONFIG_ITEM *key, WT_CONFIG_ITEM *value)
 			    conf, "Unexpected character", EINVAL));
 
 		case A_DOWN:
+			if (conf->top == -1)
+				return (__config_err(
+				    conf, "Unbalanced brackets", EINVAL));
 			--conf->depth;
 			CAP(0);
 			break;
@@ -471,8 +474,7 @@ __config_next(WT_CONFIG *conf, WT_CONFIG_ITEM *key, WT_CONFIG_ITEM *value)
 	if (conf->depth == 0)
 		return (WT_NOTFOUND);
 
-	return (__config_err(conf,
-	    "Closing brackets missing from config string", EINVAL));
+	return (__config_err(conf, "Unbalanced brackets", EINVAL));
 }
 
 /*

@@ -1,5 +1,5 @@
 /*-
- * Public Domain 2014-2015 MongoDB, Inc.
+ * Public Domain 2014-2016 MongoDB, Inc.
  * Public Domain 2008-2014 WiredTiger, Inc.
  *
  * This is free and unencumbered software released into the public domain.
@@ -50,7 +50,7 @@ public class PackOutputStream {
      *               defines the layout of this packed value.
      */
     public PackOutputStream(String format) {
-        this.format = new PackFormatInputStream(format);
+        this.format = new PackFormatInputStream(format, false);
         intBuf = new byte[MAX_INT_BYTES];
         packed = new ByteArrayOutputStream(100);
     }
@@ -206,14 +206,11 @@ public class PackOutputStream {
         } else {
             stringLen = value.length();
         }
-        if (havesize) {
+        if (havesize || fieldFormat == 's') {
             size = format.getLengthFromFormat(true);
             if (stringLen > size) {
                 stringLen = size;
             }
-        } else if (fieldFormat == 's') {
-            havesize = true;
-            size = 1;
         }
 
         if (fieldFormat == 'S' && !havesize) {

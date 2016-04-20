@@ -1,5 +1,5 @@
 /*-
- * Public Domain 2014-2015 MongoDB, Inc.
+ * Public Domain 2014-2016 MongoDB, Inc.
  * Public Domain 2008-2014 WiredTiger, Inc.
  *
  * This is free and unencumbered software released into the public domain.
@@ -35,15 +35,11 @@ wts_load(void)
 	WT_CURSOR *cursor;
 	WT_ITEM key, value;
 	WT_SESSION *session;
-	uint8_t *keybuf, *valbuf;
 	bool is_bulk;
-	int ret;
 
 	conn = g.wts_conn;
-	keybuf = valbuf = NULL;
 
-	if ((ret = conn->open_session(conn, NULL, NULL, &session)) != 0)
-		die(ret, "connection.open_session");
+	testutil_check(conn->open_session(conn, NULL, NULL, &session));
 
 	if (g.logging != 0)
 		(void)g.wt_api->msg_printf(g.wt_api, session,
@@ -61,13 +57,12 @@ wts_load(void)
 	if (g.c_reverse)
 		is_bulk = false;
 
-	if ((ret = session->open_cursor(session, g.uri, NULL,
-	    is_bulk ? "bulk,append" : NULL, &cursor)) != 0)
-		die(ret, "session.open_cursor");
+	testutil_check(session->open_cursor(session, g.uri, NULL,
+	    is_bulk ? "bulk,append" : NULL, &cursor));
 
 	/* Set up the key/value buffers. */
-	key_gen_setup(&keybuf);
-	val_gen_setup(NULL, &valbuf);
+	key_gen_setup(&key);
+	val_gen_setup(NULL, &value);
 
 	for (;;) {
 		if (++g.key_cnt > g.c_rows) {
@@ -79,10 +74,8 @@ wts_load(void)
 		if (g.key_cnt % 100 == 0)
 			track("bulk load", g.key_cnt, NULL);
 
-		key_gen(keybuf, &key.size, (uint64_t)g.key_cnt);
-		key.data = keybuf;
-		val_gen(NULL, valbuf, &value.size, (uint64_t)g.key_cnt);
-		value.data = valbuf;
+		key_gen(&key, g.key_cnt);
+		val_gen(NULL, &value, g.key_cnt);
 
 		switch (g.type) {
 		case FIX:
@@ -91,7 +84,7 @@ wts_load(void)
 			cursor->set_value(cursor, *(uint8_t *)value.data);
 			if (g.logging == LOG_OPS)
 				(void)g.wt_api->msg_printf(g.wt_api, session,
-				    "%-10s %" PRIu32 " {0x%02" PRIx8 "}",
+				    "%-10s %" PRIu64 " {0x%02" PRIx8 "}",
 				    "bulk V",
 				    g.key_cnt, ((uint8_t *)value.data)[0]);
 			break;
@@ -101,7 +94,7 @@ wts_load(void)
 			cursor->set_value(cursor, &value);
 			if (g.logging == LOG_OPS)
 				(void)g.wt_api->msg_printf(g.wt_api, session,
-				    "%-10s %" PRIu32 " {%.*s}", "bulk V",
+				    "%-10s %" PRIu64 " {%.*s}", "bulk V",
 				    g.key_cnt,
 				    (int)value.size, (char *)value.data);
 			break;
@@ -109,19 +102,18 @@ wts_load(void)
 			cursor->set_key(cursor, &key);
 			if (g.logging == LOG_OPS)
 				(void)g.wt_api->msg_printf(g.wt_api, session,
-				    "%-10s %" PRIu32 " {%.*s}", "bulk K",
+				    "%-10s %" PRIu64 " {%.*s}", "bulk K",
 				    g.key_cnt, (int)key.size, (char *)key.data);
 			cursor->set_value(cursor, &value);
 			if (g.logging == LOG_OPS)
 				(void)g.wt_api->msg_printf(g.wt_api, session,
-				    "%-10s %" PRIu32 " {%.*s}", "bulk V",
+				    "%-10s %" PRIu64 " {%.*s}", "bulk V",
 				    g.key_cnt,
 				    (int)value.size, (char *)value.data);
 			break;
 		}
 
-		if ((ret = cursor->insert(cursor)) != 0)
-			die(ret, "cursor.insert");
+		testutil_check(cursor->insert(cursor));
 
 #ifdef HAVE_BERKELEY_DB
 		if (SINGLETHREADED)
@@ -129,16 +121,14 @@ wts_load(void)
 #endif
 	}
 
-	if ((ret = cursor->close(cursor)) != 0)
-		die(ret, "cursor.close");
+	testutil_check(cursor->close(cursor));
 
 	if (g.logging != 0)
 		(void)g.wt_api->msg_printf(g.wt_api, session,
 		    "=============== bulk load stop ===============");
 
-	if ((ret = session->close(session, NULL)) != 0)
-		die(ret, "session.close");
+	testutil_check(session->close(session, NULL));
 
-	free(keybuf);
-	free(valbuf);
+	free(key.mem);
+	free(value.mem);
 }

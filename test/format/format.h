@@ -1,5 +1,5 @@
 /*-
- * Public Domain 2014-2015 MongoDB, Inc.
+ * Public Domain 2014-2016 MongoDB, Inc.
  * Public Domain 2008-2014 WiredTiger, Inc.
  *
  * This is free and unencumbered software released into the public domain.
@@ -64,8 +64,6 @@
 
 #define	EXTPATH	"../../ext/"			/* Extensions path */
 
-#define	BZIP_PATH							\
-	EXTPATH "compressors/bzip2/.libs/libwiredtiger_bzip2.so"
 #define	LZ4_PATH							\
 	EXTPATH "compressors/lz4/.libs/libwiredtiger_lz4.so"
 #define	SNAPPY_PATH							\
@@ -122,6 +120,8 @@ typedef struct {
 
 	char *helium_mount;			/* Helium volume */
 
+	char wiredtiger_open_config[8 * 1024];	/* Database open config */
+
 #ifdef HAVE_BERKELEY_DB
 	void *bdb;				/* BDB comparison handle */
 	void *dbc;				/* BDB cursor handle */
@@ -142,7 +142,6 @@ typedef struct {
 	FILE *logfp;				/* Log file */
 
 	int replay;				/* Replaying a run. */
-	int track;				/* Track progress */
 	int workers_finished;			/* Operations completed */
 
 	pthread_rwlock_t backup_lock;		/* Hot backup running */
@@ -176,26 +175,26 @@ typedef struct {
 	uint32_t c_cache;
 	uint32_t c_compact;
 	uint32_t c_checkpoints;
-	char	*c_checksum;
+	char *c_checksum;
 	uint32_t c_chunk_size;
-	char	*c_compression;
-	char	*c_encryption;
-	char	*c_config_open;
+	char *c_compression;
+	char *c_encryption;
+	char *c_config_open;
 	uint32_t c_data_extend;
-	char	*c_data_source;
+	char *c_data_source;
 	uint32_t c_delete_pct;
 	uint32_t c_dictionary;
 	uint32_t c_direct_io;
 	uint32_t c_evict_max;
 	uint32_t c_firstfit;
-	char	*c_file_type;
+	char *c_file_type;
 	uint32_t c_huffman_key;
 	uint32_t c_huffman_value;
 	uint32_t c_in_memory;
 	uint32_t c_insert_pct;
 	uint32_t c_internal_key_truncation;
 	uint32_t c_intl_page_max;
-	char	*c_isolation;
+	char *c_isolation;
 	uint32_t c_key_gap;
 	uint32_t c_key_max;
 	uint32_t c_key_min;
@@ -203,25 +202,28 @@ typedef struct {
 	uint32_t c_leak_memory;
 	uint32_t c_logging;
 	uint32_t c_logging_archive;
-	char	*c_logging_compression;
+	char *c_logging_compression;
 	uint32_t c_logging_prealloc;
 	uint32_t c_long_running_txn;
 	uint32_t c_lsm_worker_threads;
 	uint32_t c_merge_max;
 	uint32_t c_mmap;
 	uint32_t c_ops;
+	uint32_t c_quiet;
 	uint32_t c_prefix_compression;
 	uint32_t c_prefix_compression_min;
 	uint32_t c_repeat_data_pct;
 	uint32_t c_reverse;
 	uint32_t c_rows;
 	uint32_t c_runs;
+	uint32_t c_rebalance;
 	uint32_t c_salvage;
 	uint32_t c_split_pct;
 	uint32_t c_statistics;
 	uint32_t c_statistics_server;
 	uint32_t c_threads;
 	uint32_t c_timer;
+	uint32_t c_txn_freq;
 	uint32_t c_value_max;
 	uint32_t c_value_min;
 	uint32_t c_verify;
@@ -238,14 +240,12 @@ typedef struct {
 	u_int c_checksum_flag;			/* Checksum flag value */
 
 #define	COMPRESS_NONE			1
-#define	COMPRESS_BZIP			2
-#define	COMPRESS_BZIP_RAW		3
-#define	COMPRESS_LZ4			4
-#define	COMPRESS_LZ4_NO_RAW		5
-#define	COMPRESS_LZO			6
-#define	COMPRESS_SNAPPY			7
-#define	COMPRESS_ZLIB			8
-#define	COMPRESS_ZLIB_NO_RAW		9
+#define	COMPRESS_LZ4			2
+#define	COMPRESS_LZ4_NO_RAW		3
+#define	COMPRESS_LZO			4
+#define	COMPRESS_SNAPPY			5
+#define	COMPRESS_ZLIB			6
+#define	COMPRESS_ZLIB_NO_RAW		7
 	u_int c_compression_flag;		/* Compression flag value */
 	u_int c_logging_compression_flag;	/* Log compression flag value */
 
@@ -297,7 +297,7 @@ void	 bdb_np(int, void *, size_t *, void *, size_t *, int *);
 void	 bdb_open(void);
 void	 bdb_read(uint64_t, void *, size_t *, int *);
 void	 bdb_remove(uint64_t, int *);
-void	 bdb_update(const void *, size_t, const void *, size_t, int *);
+void	 bdb_update(const void *, size_t, const void *, size_t);
 #endif
 
 void	*backup(void *);
@@ -309,34 +309,32 @@ void	 config_print(int);
 void	 config_setup(void);
 void	 config_single(const char *, int);
 void	*dmalloc(size_t);
+void	*drealloc(void *, size_t);
+void	*dstrdup(const void *);
 void	 fclose_and_clear(FILE **);
-void	 key_gen(uint8_t *, size_t *, uint64_t);
-void	 key_gen_insert(WT_RAND_STATE *, uint8_t *, size_t *, uint64_t);
-void	 key_gen_setup(uint8_t **);
+void	 key_gen(WT_ITEM *, uint64_t);
+void	 key_gen_insert(WT_RAND_STATE *, WT_ITEM *, uint64_t);
+void	 key_gen_setup(WT_ITEM *);
 void	 key_len_setup(void);
 void	*lrt(void *);
 void	 path_setup(const char *);
-int	 read_row(WT_CURSOR *, WT_ITEM *, uint64_t, int);
+int	 read_row(WT_CURSOR *, WT_ITEM *, WT_ITEM *, uint64_t);
 uint32_t rng(WT_RAND_STATE *);
 void	 track(const char *, uint64_t, TINFO *);
-void	 val_gen(WT_RAND_STATE *, uint8_t *, size_t *, uint64_t);
-void	 val_gen_setup(WT_RAND_STATE *, uint8_t **);
+void	 val_gen(WT_RAND_STATE *, WT_ITEM *, uint64_t);
+void	 val_gen_setup(WT_RAND_STATE *, WT_ITEM *);
 void	 wts_close(void);
-void	 wts_create(void);
 void	 wts_dump(const char *, int);
+void	 wts_init(void);
 void	 wts_load(void);
-void	 wts_open(const char *, int, WT_CONNECTION **);
+void	 wts_open(const char *, bool, WT_CONNECTION **);
 void	 wts_ops(int);
 void	 wts_read_scan(void);
+void	 wts_rebalance(void);
+void	 wts_reopen(void);
 void	 wts_salvage(void);
 void	 wts_stats(void);
 void	 wts_verify(const char *);
-
-void	 die(int, const char *, ...)
-#if defined(__GNUC__)
-__attribute__((__noreturn__))
-#endif
-;
 
 /*
  * mmrand --

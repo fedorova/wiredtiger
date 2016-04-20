@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -24,6 +24,19 @@
 struct __wt_evict_entry {
 	WT_BTREE *btree;		/* Enclosing btree object */
 	WT_REF	 *ref;			/* Page to flush/evict */
+};
+
+#define	WT_EVICT_QUEUE_MAX	2
+/*
+ * WT_EVICT_QUEUE --
+ *	Encapsulation of an eviction candidate queue.
+ */
+struct __wt_evict_queue {
+	WT_SPINLOCK evict_lock;		/* Eviction LRU queue */
+	WT_EVICT_ENTRY *evict_queue;	/* LRU pages being tracked */
+	uint32_t evict_candidates;	/* LRU list pages to evict */
+	uint32_t evict_entries;		/* LRU entries in the queue */
+	volatile uint32_t evict_max;	/* LRU maximum eviction slot used */
 };
 
 /*
@@ -67,23 +80,24 @@ struct __wt_cache {
 	uint64_t pages_dirty;
 	uint64_t bytes_read;		/* Bytes read into memory */
 
-	uint64_t app_evicts;		/* Pages evicted by user threads */
 	uint64_t app_waits;		/* User threads waited for cache */
+	uint64_t app_evicts;		/* Pages evicted by user threads */
+	uint64_t server_evicts;		/* Pages evicted by server thread */
+	uint64_t worker_evicts;		/* Pages evicted by worker threads */
 
 	uint64_t evict_max_page_size;	/* Largest page seen at eviction */
 
 	/*
 	 * Read information.
 	 */
-	uint64_t   read_gen;		/* Page read generation (LRU) */
-	uint64_t   read_gen_oldest;	/* The oldest read generation that
-					   eviction knows about */
+	uint64_t read_gen;		/* Current page read generation */
+	uint64_t read_gen_oldest;	/* Oldest read generation the eviction
+					 * server saw in its last queue load */
 
 	/*
 	 * Eviction thread information.
 	 */
 	WT_CONDVAR *evict_cond;		/* Eviction server condition */
-	WT_SPINLOCK evict_lock;		/* Eviction LRU queue */
 	WT_SPINLOCK evict_walk_lock;	/* Eviction walk location */
 	/* Condition signalled when the eviction server populates the queue */
 	WT_CONDVAR *evict_waiter_cond;
@@ -98,11 +112,11 @@ struct __wt_cache {
 	/*
 	 * LRU eviction list information.
 	 */
-	WT_EVICT_ENTRY *evict_queue;	/* LRU pages being tracked */
+	WT_SPINLOCK evict_queue_lock;	/* Eviction current queue lock */
+	WT_EVICT_QUEUE evict_queues[WT_EVICT_QUEUE_MAX];
+	WT_EVICT_QUEUE *evict_current_queue;/* LRU current queue in use */
 	WT_EVICT_ENTRY *evict_current;	/* LRU current page to be evicted */
-	uint32_t evict_candidates;	/* LRU list pages to evict */
-	uint32_t evict_entries;		/* LRU entries in the queue */
-	volatile uint32_t evict_max;	/* LRU maximum eviction slot used */
+	uint32_t evict_queue_fill;	/* LRU eviction queue index to fill */
 	uint32_t evict_slots;		/* LRU list eviction slots */
 	WT_DATA_HANDLE
 		*evict_file_next;	/* LRU next file to search */

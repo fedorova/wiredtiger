@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -129,10 +129,11 @@ struct __wt_btree {
 	uint64_t rec_max_txn;		/* Maximum txn seen (clean trees) */
 	uint64_t write_gen;		/* Write generation */
 
-	WT_REF  *evict_ref;		/* Eviction thread's location */
-	uint64_t evict_priority;	/* Relative priority of cached pages */
-	u_int    evict_walk_period;	/* Skip this many LRU walks */
-	u_int    evict_walk_skips;	/* Number of walks skipped */
+	WT_REF	   *evict_ref;		/* Eviction thread's location */
+	uint64_t    evict_priority;	/* Relative priority of cached pages */
+	u_int	    evict_walk_period;	/* Skip this many LRU walks */
+	u_int	    evict_walk_skips;	/* Number of walks skipped */
+	u_int	    evict_disabled;	/* Eviction disabled count */
 	volatile uint32_t evict_busy;	/* Count of threads in eviction */
 
 	enum {
@@ -153,16 +154,18 @@ struct __wt_btree {
 #define	WT_BTREE_NO_CHECKPOINT	0x00800	/* Disable checkpoints */
 #define	WT_BTREE_NO_EVICTION	0x01000	/* Disable eviction */
 #define	WT_BTREE_NO_LOGGING	0x02000	/* Disable logging */
-#define	WT_BTREE_SALVAGE	0x04000	/* Handle is for salvage */
-#define	WT_BTREE_SKIP_CKPT	0x08000	/* Handle skipped checkpoint */
-#define	WT_BTREE_UPGRADE	0x10000	/* Handle is for upgrade */
-#define	WT_BTREE_VERIFY		0x20000	/* Handle is for verify */
+#define	WT_BTREE_REBALANCE	0x04000	/* Handle is for rebalance */
+#define	WT_BTREE_SALVAGE	0x08000	/* Handle is for salvage */
+#define	WT_BTREE_SKIP_CKPT	0x10000	/* Handle skipped checkpoint */
+#define	WT_BTREE_UPGRADE	0x20000	/* Handle is for upgrade */
+#define	WT_BTREE_VERIFY		0x40000	/* Handle is for verify */
 	uint32_t flags;
 };
 
 /* Flags that make a btree handle special (not for normal use). */
 #define	WT_BTREE_SPECIAL_FLAGS	 					\
-	(WT_BTREE_BULK | WT_BTREE_SALVAGE | WT_BTREE_UPGRADE | WT_BTREE_VERIFY)
+	(WT_BTREE_BULK | WT_BTREE_REBALANCE |				\
+	WT_BTREE_SALVAGE | WT_BTREE_UPGRADE | WT_BTREE_VERIFY)
 
 /*
  * WT_SALVAGE_COOKIE --

@@ -30,6 +30,7 @@ each of which is ordered by one or more columns.
 <h2>Programming notes</h2>
 - @subpage threads
 - @subpage namespace
+- @subpage readonly
 @m_if{c}
 - @subpage signals
 @m_endif
@@ -40,11 +41,12 @@ each of which is ordered by one or more columns.
 - @subpage compact
 - @subpage checkpoint
 - @subpage durability
-- @ref transaction_named_snapshots
-- @subpage shared_cache
-- @subpage statistics
 - @subpage cursor_join
 - @subpage cursor_log
+- @ref transaction_named_snapshots
+- @subpage rebalance
+- @subpage shared_cache
+- @subpage statistics
 - @subpage_single upgrade
 
 @m_if{c}

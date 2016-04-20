@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -349,14 +349,8 @@ __wt_async_op_init(WT_SESSION_IMPL *session)
 		WT_ERR(__async_op_init(conn, op, i));
 	}
 	return (0);
-err:
-	if (async->async_ops != NULL) {
-		__wt_free(session, async->async_ops);
-		async->async_ops = NULL;
-	}
-	if (async->async_queue != NULL) {
-		__wt_free(session, async->async_queue);
-		async->async_queue = NULL;
-	}
+
+err:	__wt_free(session, async->async_ops);
+	__wt_free(session, async->async_queue);
 	return (ret);
 }

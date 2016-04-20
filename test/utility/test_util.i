@@ -1,5 +1,5 @@
 /*-
- * Public Domain 2014-2015 MongoDB, Inc.
+ * Public Domain 2014-2016 MongoDB, Inc.
  * Public Domain 2008-2014 WiredTiger, Inc.
  *
  * This is free and unencumbered software released into the public domain.
@@ -42,23 +42,60 @@
 #define	DEFAULT_DIR "WT_TEST"
 #define	MKDIR_COMMAND "mkdir "
 
+/* Allow tests to add their own death handling. */
+extern void (*custom_die)(void);
+
+static void	 testutil_die(int, const char *, ...)
+#if defined(__GNUC__)
+__attribute__((__noreturn__))
+#endif
+;
+
 /*
  * die --
  *	Report an error and quit.
  */
-static inline void
+static void
 testutil_die(int e, const char *fmt, ...)
 {
 	va_list ap;
 
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
+	/* Allow test programs to cleanup on fatal error. */
+	if (custom_die != NULL)
+		(*custom_die)();
+
+	if (fmt != NULL) {
+		va_start(ap, fmt);
+		vfprintf(stderr, fmt, ap);
+		va_end(ap);
+	}
 	if (e != 0)
 		fprintf(stderr, ": %s", wiredtiger_strerror(e));
 	fprintf(stderr, "\n");
+
 	exit(EXIT_FAILURE);
 }
+
+/*
+ * testutil_check --
+ *	Complain and quit if a function call fails.
+ */
+#define	testutil_check(call) do {					\
+	int __r;							\
+	if ((__r = (call)) != 0)					\
+		testutil_die(__r, "%s/%d: %s", __func__, __LINE__, #call);\
+} while (0)
+
+/*
+ * testutil_checkfmt --
+ *	Complain and quit if a function call fails, with additional arguments.
+ */
+#define	testutil_checkfmt(call, fmt, ...) do {				\
+	int __r;							\
+	if ((__r = (call)) != 0)					\
+		testutil_die(__r, "%s/%d: %s: " fmt,			\
+		    __func__, __LINE__, #call, __VA_ARGS__);		\
+} while (0)
 
 /*
  * testutil_work_dir_from_path --
@@ -66,79 +103,63 @@ testutil_die(int e, const char *fmt, ...)
  *	Creates the full intended work directory in buffer.
  */
 static inline void
-testutil_work_dir_from_path(char *buffer, size_t inputSize, char *dir)
+testutil_work_dir_from_path(char *buffer, size_t len, const char *dir)
 {
 	/* If no directory is provided, use the default. */
-	if (dir == NULL) {
-		if (inputSize < sizeof(DEFAULT_DIR))
-			testutil_die(ENOMEM,
-			    "Not enough memory in buffer for directory %s%c%s",
-			    dir, DIR_DELIM, DEFAULT_DIR);
+	if (dir == NULL)
+		dir = DEFAULT_DIR;
 
-		snprintf(buffer, inputSize, DEFAULT_DIR);
-		return;
-	}
-
-	/* Additional bytes for the directory and WT_TEST. */
-	if (inputSize < strlen(dir) + sizeof(DEFAULT_DIR) + sizeof(DIR_DELIM))
+	if (len < strlen(dir) + 1)
 		testutil_die(ENOMEM,
-		    "Not enough memory in buffer for directory %s%c%s",
-		    dir, DIR_DELIM, DEFAULT_DIR);
+		    "Not enough memory in buffer for directory %s", dir);
 
-	snprintf(buffer, inputSize, "%s%c%s", dir, DIR_DELIM, DEFAULT_DIR);
+	strcpy(buffer, dir);
 }
 
 /*
  * testutil_clean_work_dir --
- *	Remove any existing work directories, can optionally fail on error
+ *	Remove the work directory.
  */
 static inline void
 testutil_clean_work_dir(char *dir)
 {
-	size_t inputSize;
+	size_t len;
 	int ret;
-	bool exist;
-	char *buffer;
+	char *buf;
 
 	/* Additional bytes for the Windows rd command. */
-	inputSize = strlen(dir) + sizeof(RM_COMMAND);
-	if ((buffer = malloc(inputSize)) == NULL)
+	len = strlen(dir) + strlen(RM_COMMAND) + 1;
+	if ((buf = malloc(len)) == NULL)
 		testutil_die(ENOMEM, "Failed to allocate memory");
 
-	snprintf(buffer, inputSize, "%s%s", RM_COMMAND, dir);
+	snprintf(buf, len, "%s%s", RM_COMMAND, dir);
 
-	exist = 0;
-	if ((ret = __wt_exist(NULL, dir, &exist)) != 0)
-		testutil_die(ret,
-		    "Unable to check if directory exists");
-	if (exist == 1 && (ret = system(buffer)) != 0)
-		testutil_die(ret,
-		    "System call to remove directory failed");
-	free(buffer);
+	if ((ret = system(buf)) != 0 && ret != ENOENT)
+		testutil_die(ret, "%s", buf);
+	free(buf);
 }
 
 /*
  * testutil_make_work_dir --
- *	Delete the existing work directory if it exists, then create a new one.
+ *	Delete the existing work directory, then create a new one.
  */
 static inline void
 testutil_make_work_dir(char *dir)
 {
-	size_t inputSize;
+	size_t len;
 	int ret;
-	char *buffer;
+	char *buf;
 
 	testutil_clean_work_dir(dir);
 
 	/* Additional bytes for the mkdir command */
-	inputSize = strlen(dir) + sizeof(MKDIR_COMMAND);
-	if ((buffer = malloc(inputSize)) == NULL)
+	len = strlen(dir) + strlen(MKDIR_COMMAND) + 1;
+	if ((buf = malloc(len)) == NULL)
 		testutil_die(ENOMEM, "Failed to allocate memory");
 
 	/* mkdir shares syntax between Windows and Linux */
-	snprintf(buffer, inputSize, "%s%s", MKDIR_COMMAND, dir);
-	if ((ret = system(buffer)) != 0)
-		testutil_die(ret, "directory create call of '%s%s' failed",
-		    MKDIR_COMMAND, dir);
-	free(buffer);
+	snprintf(buf, len, "%s%s", MKDIR_COMMAND, dir);
+	if ((ret = system(buf)) != 0)
+		testutil_die(ret, "%s", buf);
+	free(buf);
 }

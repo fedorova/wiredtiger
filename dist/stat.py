@@ -98,11 +98,11 @@ for line in open('../src/include/wiredtiger.in', 'r'):
 f.close()
 compare_srcfile(tmp_file, '../src/include/wiredtiger.in')
 
-def print_func(name, handle, list):
+def print_func(name, handle, statlist):
     '''Print the structures/functions for the stat.c file.'''
     f.write('\n')
     f.write('static const char * const __stats_' + name + '_desc[] = {\n')
-    for l in list:
+    for l in statlist:
         f.write('\t"' + l.desc + '",\n')
     f.write('};\n')
 
@@ -143,7 +143,7 @@ void
 __wt_stat_''' + name + '_clear_single(WT_' + name.upper() + '''_STATS *stats)
 {
 ''')
-    for l in sorted(list):
+    for l in statlist:
         # no_clear: don't clear the value.
         if 'no_clear' in l.flags:
             f.write('\t\t/* not clearing ' + l.name + ' */\n')
@@ -170,10 +170,8 @@ __wt_stat_''' + name + '''_aggregate_single(
     WT_''' + name.upper() + '_STATS *from, WT_' + name.upper() + '''_STATS *to)
 {
 ''')
-        for l in sorted(list):
-            if 'no_aggregate' in l.flags:
-                o = '\tto->' + l.name + ' = from->' + l.name + ';\n'
-            elif 'max_aggregate' in l.flags:
+        for l in statlist:
+            if 'max_aggregate' in l.flags:
                 o = '\tif (from->' + l.name + ' > to->' + l.name + ')\n' +\
                     '\t\tto->' + l.name + ' = from->' + l.name + ';\n'
             else:
@@ -192,17 +190,17 @@ __wt_stat_''' + name + '''_aggregate(
     # Connection level aggregation does not currently have any computation
     # of a maximum value; I'm leaving in support for it, but don't declare
     # a temporary variable until it's needed.
-    for l in sorted(list):
+    for l in statlist:
         if 'max_aggregate' in l.flags:
             f.write('\tint64_t v;\n\n')
             break;
-    for l in sorted(list):
-        if 'no_aggregate' in l.flags:
-            o = '\tto->' + l.name + ' = from[0]->' + l.name + ';\n'
-        elif 'max_aggregate' in l.flags:
-            o = '\tif ((v = WT_STAT_READ(from, ' + l.name + ')) >\n' +\
-                '\t    to->' + l.name + ')\n' +\
-                '\t\tto->' + l.name + ' = v;\n'
+    for l in statlist:
+        if 'max_aggregate' in l.flags:
+            o = '\tif ((v = WT_STAT_READ(from, ' + l.name + ')) > ' +\
+                'to->' + l.name + ')\n'
+            if len(o) > 72:             # Account for the leading tab.
+                o = o.replace(' > ', ' >\n\t    ')
+            o +='\t\tto->' + l.name + ' = v;\n'
         else:
             o = '\tto->' + l.name + ' += WT_STAT_READ(from, ' + l.name + ');\n'
             if len(o) > 72:             # Account for the leading tab.

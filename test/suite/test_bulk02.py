@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Public Domain 2014-2015 MongoDB, Inc.
+# Public Domain 2014-2016 MongoDB, Inc.
 # Public Domain 2008-2014 WiredTiger, Inc.
 #
 # This is free and unencumbered software released into the public domain.
@@ -49,8 +49,7 @@ class test_bulkload_checkpoint(wttest.WiredTigerTestCase, suite_subprocess):
 
     scenarios = number_scenarios(multiply_scenarios('.', types, ckpt_type))
 
-    # Bulk-load handles return EBUSY to the checkpoint code, causing the
-    # checkpoint call to find a handle anyway, and create fake checkpoint.
+    # Bulk-load handles are skipped by checkpoints.
     # Named and unnamed checkpoint versions.
     def test_bulkload_checkpoint(self):
         # Open a bulk cursor and insert a few records.
@@ -72,11 +71,8 @@ class test_bulkload_checkpoint(wttest.WiredTigerTestCase, suite_subprocess):
         # In the case of named checkpoints, verify they're still there,
         # reflecting an empty file.
         if self.ckpt_type == 'named':
-            cursor = self.session.open_cursor(
-                self.uri, None, 'checkpoint=myckpt')
-            self.assertEquals(cursor.next(), wiredtiger.WT_NOTFOUND)
-            cursor.close()
-
+            self.assertRaises(wiredtiger.WiredTigerError,
+                lambda: self.session.open_cursor(self.uri, None, 'checkpoint=myckpt'))
 
 # test_bulkload_backup
 #       Test bulk-load with hot-backup.
@@ -104,7 +100,7 @@ class test_bulkload_backup(wttest.WiredTigerTestCase, suite_subprocess):
         self.backup(backupdir, session)
 
         # Open the target directory, and confirm the object has no contents.
-        conn = wiredtiger.wiredtiger_open(backupdir)
+        conn = self.wiredtiger_open(backupdir)
         session = conn.open_session()
         cursor = session.open_cursor(self.uri, None, None)
         self.assertEqual(cursor.next(), wiredtiger.WT_NOTFOUND)

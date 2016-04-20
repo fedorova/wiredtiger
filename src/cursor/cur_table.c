@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -79,22 +79,22 @@ __wt_apply_single_idx(WT_SESSION_IMPL *session, WT_INDEX *idx,
     WT_CURSOR *cur, WT_CURSOR_TABLE *ctable, int (*f)(WT_CURSOR *))
 {
 	WT_CURSOR_STATIC_INIT(iface,
-	    __wt_cursor_get_key,	/* get-key */
-	    __wt_cursor_get_value,	/* get-value */
-	    __wt_cursor_set_key,	/* set-key */
-	    __wt_cursor_set_value,	/* set-value */
-	    __wt_cursor_notsup,		/* compare */
-	    __wt_cursor_notsup,		/* equals */
-	    __wt_cursor_notsup,		/* next */
-	    __wt_cursor_notsup,		/* prev */
-	    __wt_cursor_notsup,		/* reset */
-	    __wt_cursor_notsup,		/* search */
-	    __wt_cursor_notsup,		/* search-near */
-	    __curextract_insert,	/* insert */
-	    __wt_cursor_notsup,		/* update */
-	    __wt_cursor_notsup,		/* reconfigure */
-	    __wt_cursor_notsup,		/* remove */
-	    __wt_cursor_notsup);	/* close */
+	    __wt_cursor_get_key,		/* get-key */
+	    __wt_cursor_get_value,		/* get-value */
+	    __wt_cursor_set_key,		/* set-key */
+	    __wt_cursor_set_value,		/* set-value */
+	    __wt_cursor_compare_notsup,		/* compare */
+	    __wt_cursor_equals_notsup,		/* equals */
+	    __wt_cursor_notsup,			/* next */
+	    __wt_cursor_notsup,			/* prev */
+	    __wt_cursor_notsup,			/* reset */
+	    __wt_cursor_notsup,			/* search */
+	    __wt_cursor_search_near_notsup,	/* search-near */
+	    __curextract_insert,		/* insert */
+	    __wt_cursor_notsup,			/* update */
+	    __wt_cursor_notsup,			/* remove */
+	    __wt_cursor_reconfigure_notsup,	/* reconfigure */
+	    __wt_cursor_notsup);		/* close */
 	WT_CURSOR_EXTRACTOR extract_cursor;
 	WT_DECL_RET;
 	WT_ITEM key, value;
@@ -758,6 +758,7 @@ err:	API_END_RET(session, ret);
 static int
 __curtable_open_colgroups(WT_CURSOR_TABLE *ctable, const char *cfg_arg[])
 {
+	WT_DECL_RET;
 	WT_SESSION_IMPL *session;
 	WT_TABLE *table;
 	WT_CURSOR **cp;
@@ -776,8 +777,10 @@ __curtable_open_colgroups(WT_CURSOR_TABLE *ctable, const char *cfg_arg[])
 
 	/* If the table is incomplete, wait on the table lock and recheck. */
 	complete = table->cg_complete;
-	if (!complete)
-		WT_WITH_TABLE_LOCK(session, complete = table->cg_complete);
+	if (!complete) {
+		WT_WITH_TABLE_LOCK(session, ret, complete = table->cg_complete);
+		WT_RET(ret);
+	}
 	if (!complete)
 		WT_RET_MSG(session, EINVAL,
 		    "Can't use '%s' until all column groups are created",
@@ -839,22 +842,22 @@ __wt_curtable_open(WT_SESSION_IMPL *session,
     const char *uri, WT_CURSOR *owner, const char *cfg[], WT_CURSOR **cursorp)
 {
 	WT_CURSOR_STATIC_INIT(iface,
-	    __wt_curtable_get_key,	/* get-key */
-	    __wt_curtable_get_value,	/* get-value */
-	    __wt_curtable_set_key,	/* set-key */
-	    __wt_curtable_set_value,	/* set-value */
-	    __curtable_compare,		/* compare */
-	    __wt_cursor_equals,		/* equals */
-	    __curtable_next,		/* next */
-	    __curtable_prev,		/* prev */
-	    __curtable_reset,		/* reset */
-	    __curtable_search,		/* search */
-	    __curtable_search_near,	/* search-near */
-	    __curtable_insert,		/* insert */
-	    __curtable_update,		/* update */
-	    __curtable_remove,		/* remove */
-	    __wt_cursor_reconfigure,	/* reconfigure */
-	    __curtable_close);		/* close */
+	    __wt_curtable_get_key,		/* get-key */
+	    __wt_curtable_get_value,		/* get-value */
+	    __wt_curtable_set_key,		/* set-key */
+	    __wt_curtable_set_value,		/* set-value */
+	    __curtable_compare,			/* compare */
+	    __wt_cursor_equals,			/* equals */
+	    __curtable_next,			/* next */
+	    __curtable_prev,			/* prev */
+	    __curtable_reset,			/* reset */
+	    __curtable_search,			/* search */
+	    __curtable_search_near,		/* search-near */
+	    __curtable_insert,			/* insert */
+	    __curtable_update,			/* update */
+	    __curtable_remove,			/* remove */
+	    __wt_cursor_reconfigure,		/* reconfigure */
+	    __curtable_close);			/* close */
 	WT_CONFIG_ITEM cval;
 	WT_CURSOR *cursor;
 	WT_CURSOR_TABLE *ctable;

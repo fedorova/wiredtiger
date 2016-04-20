@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -397,22 +397,22 @@ __wt_curfile_create(WT_SESSION_IMPL *session,
     WT_CURSOR **cursorp)
 {
 	WT_CURSOR_STATIC_INIT(iface,
-	    __wt_cursor_get_key,	/* get-key */
-	    __wt_cursor_get_value,	/* get-value */
-	    __wt_cursor_set_key,	/* set-key */
-	    __wt_cursor_set_value,	/* set-value */
-	    __curfile_compare,		/* compare */
-	    __curfile_equals,		/* equals */
-	    __curfile_next,		/* next */
-	    __curfile_prev,		/* prev */
-	    __curfile_reset,		/* reset */
-	    __curfile_search,		/* search */
-	    __curfile_search_near,	/* search-near */
-	    __curfile_insert,		/* insert */
-	    __curfile_update,		/* update */
-	    __curfile_remove,		/* remove */
-	    __wt_cursor_reconfigure,	/* reconfigure */
-	    __curfile_close);		/* close */
+	    __wt_cursor_get_key,		/* get-key */
+	    __wt_cursor_get_value,		/* get-value */
+	    __wt_cursor_set_key,		/* set-key */
+	    __wt_cursor_set_value,		/* set-value */
+	    __curfile_compare,			/* compare */
+	    __curfile_equals,			/* equals */
+	    __curfile_next,			/* next */
+	    __curfile_prev,			/* prev */
+	    __curfile_reset,			/* reset */
+	    __curfile_search,			/* search */
+	    __curfile_search_near,		/* search-near */
+	    __curfile_insert,			/* insert */
+	    __curfile_update,			/* update */
+	    __curfile_remove,			/* remove */
+	    __wt_cursor_reconfigure,		/* reconfigure */
+	    __curfile_close);			/* close */
 	WT_BTREE *btree;
 	WT_CONFIG_ITEM cval;
 	WT_CURSOR *cursor;
@@ -455,14 +455,24 @@ __wt_curfile_create(WT_SESSION_IMPL *session,
 	}
 
 	/*
-	 * random_retrieval
-	 * Random retrieval cursors only support next, reset and close.
+	 * Random retrieval, row-store only.
+	 * Random retrieval cursors support a limited set of methods.
 	 */
 	WT_ERR(__wt_config_gets_def(session, cfg, "next_random", 0, &cval));
 	if (cval.val != 0) {
+		if (WT_CURSOR_RECNO(cursor))
+			WT_ERR_MSG(session, ENOTSUP,
+			    "next_random configuration not supported for "
+			    "column-store objects");
+
 		__wt_cursor_set_notsup(cursor);
 		cursor->next = __curfile_next_random;
 		cursor->reset = __curfile_reset;
+
+		WT_ERR(__wt_config_gets_def(
+		    session, cfg, "next_random_sample_size", 0, &cval));
+		if (cval.val != 0)
+			cbt->next_random_sample_size = (u_int)cval.val;
 	}
 
 	/* Underlying btree initialization. */
@@ -535,8 +545,8 @@ __wt_curfile_open(WT_SESSION_IMPL *session, const char *uri,
 		 * failing with EBUSY due to a database-wide checkpoint.
 		 */
 		if (LF_ISSET(WT_DHANDLE_EXCLUSIVE))
-			WT_WITH_CHECKPOINT_LOCK(session, ret =
-			    __wt_session_get_btree_ckpt(
+			WT_WITH_CHECKPOINT_LOCK(session, ret,
+			    ret = __wt_session_get_btree_ckpt(
 			    session, uri, cfg, flags));
 		else
 			ret = __wt_session_get_btree_ckpt(

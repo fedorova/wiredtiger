@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Public Domain 2014-2015 MongoDB, Inc.
+# Public Domain 2014-2016 MongoDB, Inc.
 # Public Domain 2008-2014 WiredTiger, Inc.
 #
 # This is free and unencumbered software released into the public domain.
@@ -35,7 +35,6 @@
 
 import fnmatch, os, shutil, time
 from suite_subprocess import suite_subprocess
-from wiredtiger import wiredtiger_open
 from wtscenario import multiply_scenarios, number_scenarios, prune_scenarios
 from helper import copy_wiredtiger_home
 import wttest
@@ -44,14 +43,6 @@ class test_backup05(wttest.WiredTigerTestCase, suite_subprocess):
     uri = 'table:test_backup05'
     create_params = 'key_format=i,value_format=i'
     freq = 5
-
-    def copy_windows(self, olddir, newdir):
-        os.mkdir(newdir)
-        for fname in os.listdir(olddir):
-            fullname = os.path.join(olddir, fname)
-            # Skip lock file on Windows since it is locked
-            if os.path.isfile(fullname) and "WiredTiger.lock" not in fullname:
-                shutil.copy(fullname, newdir)
 
     def check_manual_backup(self, i, olddir, newdir):
         ''' Simulate a manual backup from olddir and restart in newdir. '''
@@ -72,7 +63,7 @@ class test_backup05(wttest.WiredTigerTestCase, suite_subprocess):
         session.verify(self.uri)
         conn.close()
 
-    def test_backup(self):
+    def backup(self):
         '''Check manual fsyncLock backup strategy'''
 
         # Here's the strategy:
@@ -95,6 +86,10 @@ class test_backup05(wttest.WiredTigerTestCase, suite_subprocess):
                 self.check_manual_backup(i, ".", "RESTART")
             else:
                 self.session.verify(self.uri)
+
+    def test_backup(self):
+        with self.expectedStdoutPattern('Recreating metadata'):
+            self.backup()
 
 if __name__ == '__main__':
     wttest.run()

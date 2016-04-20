@@ -76,12 +76,12 @@ lsm_config = [
         Config('bloom', 'true', r'''
             create bloom filters on LSM tree chunks as they are merged''',
             type='boolean'),
-        Config('bloom_config', '', r'''
-            config string used when creating Bloom filter files, passed
-            to WT_SESSION::create'''),
         Config('bloom_bit_count', '16', r'''
             the number of bits used per item for LSM bloom filters''',
             min='2', max='1000'),
+        Config('bloom_config', '', r'''
+            config string used when creating Bloom filter files, passed
+            to WT_SESSION::create'''),
         Config('bloom_hash_count', '8', r'''
             the number of hash values per item used for LSM bloom
             filters''',
@@ -136,8 +136,8 @@ file_config = format_meta + [
         configure a compressor for file blocks.  Permitted values are \c "none"
         or custom compression engine name created with
         WT_CONNECTION::add_compressor.  If WiredTiger has builtin support for
-        \c "bzip2", \c "snappy", \c "lz4" or \c "zlib" compression, these names
-        are also available.  See @ref compression for more information'''),
+        \c "snappy", \c "lz4" or \c "zlib" compression, these names are also
+        available.  See @ref compression for more information'''),
     Config('cache_resident', 'false', r'''
         do not ever evict the object's pages from cache. Not compatible with
         LSM tables; see @ref tuning_cache_resident for more information''',
@@ -299,6 +299,15 @@ file_meta = file_config + [
         the file version'''),
 ]
 
+lsm_meta = file_config + lsm_config + [
+    Config('last', '', r'''
+        the last allocated chunk ID'''),
+    Config('chunks', '', r'''
+        active chunks in the LSM tree'''),
+    Config('old_chunks', '', r'''
+        obsolete chunks in the LSM tree'''),
+]
+
 table_only_config = [
     Config('colgroups', '', r'''
         comma-separated list of names of column groups.  Each column
@@ -422,9 +431,8 @@ connection_runtime_config = [
             configure a compressor for log records.  Permitted values are
             \c "none" or custom compression engine name created with
             WT_CONNECTION::add_compressor.  If WiredTiger has builtin support
-            for \c "bzip2", \c "snappy", \c "lz4" or \c "zlib" compression,
-            these names are also available. See @ref compression for more
-            information'''),
+            for \c "snappy", \c "lz4" or \c "zlib" compression, these names
+            are also available. See @ref compression for more information'''),
         Config('enabled', 'false', r'''
             enable logging subsystem''',
             type='boolean'),
@@ -523,6 +531,9 @@ connection_runtime_config = [
         the statistics log server uses a session from the configured
         session_max''',
         type='category', subconfig=[
+        Config('json', 'false', r'''
+            encode statistics in JSON format''',
+            type='boolean'),
         Config('on_close', 'false', r'''log statistics on database close''',
             type='boolean'),
         Config('path', '"WiredTigerStat.%d.%H"', r'''
@@ -539,7 +550,8 @@ connection_runtime_config = [
             type='list'),
         Config('timestamp', '"%b %d %H:%M:%S"', r'''
             a timestamp prepended to each log record, may contain strftime
-            conversion specifications'''),
+            conversion specifications, when \c json is configured, defaults
+            to \c "%FT%Y.000Z"'''),
         Config('wait', '0', r'''
             seconds to wait between each write of the log records; setting
             this value above 0 configures statistics logging''',
@@ -557,6 +569,7 @@ connection_runtime_config = [
             'evict',
             'evictserver',
             'fileops',
+            'handleops',
             'log',
             'lsm',
             'lsm_manager',
@@ -564,6 +577,7 @@ connection_runtime_config = [
             'mutex',
             'overflow',
             'read',
+            'rebalance',
             'reconcile',
             'recovery',
             'salvage',
@@ -655,6 +669,11 @@ wiredtiger_open_common = connection_runtime_config + [
         RPC server for primary processes and use RPC for secondary
         processes). <b>Not yet supported in WiredTiger</b>''',
         type='boolean'),
+    Config('readonly', 'false', r'''
+        open connection in read-only mode.  The database must exist.  All
+        methods that may modify a database are disabled.  See @ref readonly
+        for more information''',
+        type='boolean'),
     Config('session_max', '100', r'''
         maximum expected number of sessions (including server
         threads)''',
@@ -732,11 +751,15 @@ cursor_runtime_config = [
 ]
 
 methods = {
-'file.meta' : Method(file_meta),
-
 'colgroup.meta' : Method(colgroup_meta),
 
+'file.config' : Method(file_config),
+
+'file.meta' : Method(file_meta),
+
 'index.meta' : Method(index_meta),
+
+'lsm.meta' : Method(lsm_meta),
 
 'table.meta' : Method(table_meta),
 
@@ -769,6 +792,10 @@ methods = {
         type='boolean'),
     Config('remove_files', 'true', r'''
         should the underlying files be removed?''',
+        type='boolean'),
+    Config('lock_wait', 'true', r'''
+        wait for locks, if \c lock_wait=false, fail if any required locks are
+        not available immediately''',
         type='boolean'),
 ]),
 
@@ -814,21 +841,19 @@ methods = {
 
 'WT_SESSION.open_cursor' : Method(cursor_runtime_config + [
     Config('bulk', 'false', r'''
-        configure the cursor for bulk-loading, a fast, initial load
-        path (see @ref tune_bulk_load for more information).  Bulk-load
-        may only be used for newly created objects and cursors
-        configured for bulk-load only support the WT_CURSOR::insert
-        and WT_CURSOR::close methods.  When bulk-loading row-store
-        objects, keys must be loaded in sorted order.  The value is
-        usually a true/false flag; when bulk-loading fixed-length
-        column store objects, the special value \c bitmap allows
-        chunks of a memory resident bitmap to be loaded directly into
-        a file by passing a \c WT_ITEM to WT_CURSOR::set_value where
-        the \c size field indicates the number of records in the
-        bitmap (as specified by the object's \c value_format
-        configuration). Bulk-loaded bitmap values must end on a byte
-        boundary relative to the bit count (except for the last set
-        of values loaded)'''),
+        configure the cursor for bulk-loading, a fast, initial load path
+        (see @ref tune_bulk_load for more information).  Bulk-load may
+        only be used for newly created objects and applications should
+        use the WT_CURSOR::insert method to insert rows.  When
+        bulk-loading, rows must be loaded in sorted order.  The value
+        is usually a true/false flag; when bulk-loading fixed-length
+        column store objects, the special value \c bitmap allows chunks
+        of a memory resident bitmap to be loaded directly into a file
+        by passing a \c WT_ITEM to WT_CURSOR::set_value where the \c
+        size field indicates the number of records in the bitmap (as
+        specified by the object's \c value_format configuration).
+        Bulk-loaded bitmap values must end on a byte boundary relative
+        to the bit count (except for the last set of values loaded)'''),
     Config('checkpoint', '', r'''
         the name of a checkpoint to open (the reserved name
         "WiredTigerCheckpoint" opens the most recent internal
@@ -843,12 +868,20 @@ methods = {
         with the @ref util_dump and @ref util_load commands''',
         choices=['hex', 'json', 'print']),
     Config('next_random', 'false', r'''
-        configure the cursor to return a pseudo-random record from
-        the object; valid only for row-store cursors.  Cursors
-        configured with \c next_random=true only support the
-        WT_CURSOR::next and WT_CURSOR::close methods.  See @ref
-        cursor_random for details''',
+        configure the cursor to return a pseudo-random record from the
+        object when the WT_CURSOR::next method is called; valid only for
+        row-store cursors. See @ref cursor_random for details''',
         type='boolean'),
+    Config('next_random_sample_size', '0', r'''
+        cursors configured by \c next_random to return pseudo-random
+        records from the object randomly select from the entire object,
+        by default. Setting \c next_random_sample_size to a non-zero
+        value sets the number of samples the application expects to take
+        using the \c next_random cursor. A cursor configured with both
+        \c next_random and \c next_random_sample_size attempts to divide
+        the object into \c next_random_sample_size equal-sized pieces,
+        and each retrieval returns a record from one of those pieces. See
+        @ref cursor_random for details'''),
     Config('raw', 'false', r'''
         ignore the encodings for the key and value, manage data as if
         the formats were \c "u".  See @ref cursor_raw for details''',
@@ -886,6 +919,7 @@ methods = {
         type='list'),
 ]),
 
+'WT_SESSION.rebalance' : Method([]),
 'WT_SESSION.rename' : Method([]),
 'WT_SESSION.reset' : Method([]),
 'WT_SESSION.salvage' : Method([

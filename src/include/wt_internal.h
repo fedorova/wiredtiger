@@ -1,10 +1,13 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
  * See the file LICENSE for redistribution information.
  */
+
+#ifndef __WT_INTERNAL_H
+#define	__WT_INTERNAL_H
 
 #if defined(__cplusplus)
 extern "C" {
@@ -166,6 +169,8 @@ struct __wt_dsrc_stats;
     typedef struct __wt_dsrc_stats WT_DSRC_STATS;
 struct __wt_evict_entry;
     typedef struct __wt_evict_entry WT_EVICT_ENTRY;
+struct __wt_evict_queue;
+    typedef struct __wt_evict_queue WT_EVICT_QUEUE;
 struct __wt_evict_worker;
     typedef struct __wt_evict_worker WT_EVICT_WORKER;
 struct __wt_ext;
@@ -176,6 +181,8 @@ struct __wt_fair_lock;
     typedef struct __wt_fair_lock WT_FAIR_LOCK;
 struct __wt_fh;
     typedef struct __wt_fh WT_FH;
+struct __wt_fstream;
+    typedef struct __wt_fstream WT_FSTREAM;
 struct __wt_hazard;
     typedef struct __wt_hazard WT_HAZARD;
 struct __wt_ikey;
@@ -284,6 +291,8 @@ struct __wt_txn_state;
     typedef struct __wt_txn_state WT_TXN_STATE;
 struct __wt_update;
     typedef struct __wt_update WT_UPDATE;
+union __wt_lsn;
+    typedef union __wt_lsn WT_LSN;
 union __wt_rand_state;
     typedef union __wt_rand_state WT_RAND_STATE;
 /*
@@ -302,6 +311,7 @@ union __wt_rand_state;
 #include "msvc.h"
 #endif
 #include "hardware.h"
+#include "swap.h"
 
 #include "queue.h"
 
@@ -324,8 +334,8 @@ union __wt_rand_state;
 #include "btmem.h"
 #include "btree.h"
 #include "cache.h"
-#include "config.h"
 #include "compact.h"
+#include "config.h"
 #include "cursor.h"
 #include "dlh.h"
 #include "error.h"
@@ -344,25 +354,28 @@ union __wt_rand_state;
 #include "extern.h"
 #include "verify_build.h"
 
-#include "buf.i"
-#include "misc.i"
 #include "intpack.i"			/* required by cell.i, packing.i */
-#include "packing.i"
+
+#include "buf.i"                        /* required by cell.i */
 #include "cache.i"			/* required by txn.i */
 #include "cell.i"			/* required by btree.i */
-
-#include "log.i"
 #include "mutex.i"			/* required by btree.i */
 #include "txn.i"			/* required by btree.i */
 
+#include "bitstring.i"
 #include "btree.i"			/* required by cursor.i */
 #include "btree_cmp.i"
-#include "cursor.i"
-
-#include "bitstring.i"
 #include "column.i"
+#include "cursor.i"
+#include "log.i"
+#include "misc.i"
+#include "os_fhandle.i"
+#include "os_fs.i"
+#include "os_fstream.i"
+#include "packing.i"
 #include "serial.i"
 
 #if defined(__cplusplus)
 }
 #endif
+#endif					/* !__WT_INTERNAL_H */

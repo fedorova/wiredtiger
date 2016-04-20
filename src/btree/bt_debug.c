@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2014-2015 MongoDB, Inc.
+ * Copyright (c) 2014-2016 MongoDB, Inc.
  * Copyright (c) 2008-2014 WiredTiger, Inc.
  *	All rights reserved.
  *
@@ -19,7 +19,7 @@ typedef struct {
 	 * When using the standard event handlers, the debugging output has to
 	 * do its own message handling because its output isn't line-oriented.
 	 */
-	FILE		*fp;			/* Output file stream */
+	WT_FSTREAM	*fs;			/* Output file stream */
 	WT_ITEM		*msg;			/* Buffered message */
 
 	WT_ITEM		*tmp;			/* Temporary space */
@@ -43,7 +43,7 @@ static int  __debug_page_col_var(WT_DBG *, WT_PAGE *);
 static int  __debug_page_metadata(WT_DBG *, WT_PAGE *);
 static int  __debug_page_row_int(WT_DBG *, WT_PAGE *, uint32_t);
 static int  __debug_page_row_leaf(WT_DBG *, WT_PAGE *);
-static int  __debug_ref(WT_DBG *, WT_REF *);
+static void __debug_ref(WT_DBG *, WT_REF *);
 static void __debug_row_skip(WT_DBG *, WT_INSERT_HEAD *);
 static int  __debug_tree(
 	WT_SESSION_IMPL *, WT_BTREE *, WT_PAGE *, const char *, uint32_t);
@@ -97,11 +97,8 @@ __debug_config(WT_SESSION_IMPL *session, WT_DBG *ds, const char *ofile)
 	if (ofile == NULL)
 		return (__wt_scr_alloc(session, 512, &ds->msg));
 
-	/* If we're using a file, flush on each line. */
-	WT_RET(__wt_fopen(session, ofile, WT_FHANDLE_WRITE, 0, &ds->fp));
-
-	(void)setvbuf(ds->fp, NULL, _IOLBF, 0);
-	return (0);
+	return (__wt_fopen(session, ofile, WT_OPEN_CREATE,
+	    WT_STREAM_LINE_BUFFER | WT_STREAM_WRITE, &ds->fs));
 }
 
 /*
@@ -130,7 +127,7 @@ __dmsg_wrapup(WT_DBG *ds)
 	}
 
 	/* Close any file we opened. */
-	(void)__wt_fclose(&ds->fp, WT_FHANDLE_WRITE);
+	(void)__wt_fclose(session, &ds->fs);
 }
 
 /*
@@ -155,7 +152,7 @@ __dmsg(WT_DBG *ds, const char *fmt, ...)
 	 * the output chunk, and pass it to the event handler once we see a
 	 * terminating newline.
 	 */
-	if (ds->fp == NULL) {
+	if (ds->fs == NULL) {
 		msg = ds->msg;
 		for (;;) {
 			p = (char *)msg->mem + msg->size;
@@ -187,7 +184,7 @@ __dmsg(WT_DBG *ds, const char *fmt, ...)
 		}
 	} else {
 		va_start(ap, fmt);
-		(void)__wt_vfprintf(ds->fp, fmt, ap);
+		(void)__wt_vfprintf(session, ds->fs, fmt, ap);
 		va_end(ap);
 	}
 }
@@ -204,7 +201,7 @@ __wt_debug_addr_print(
 	WT_DECL_RET;
 
 	WT_RET(__wt_scr_alloc(session, 128, &buf));
-	ret = __wt_fprintf(stderr,
+	ret = __wt_fprintf(session, WT_STDERR(session),
 	    "%s\n", __wt_addr_string(session, addr, addr_size, buf));
 	__wt_scr_free(session, &buf);
 
@@ -676,8 +673,12 @@ __debug_page_metadata(WT_DBG *ds, WT_PAGE *page)
 		__dmsg(ds, ", evict-lru");
 	if (F_ISSET_ATOMIC(page, WT_PAGE_OVERFLOW_KEYS))
 		__dmsg(ds, ", overflow-keys");
+	if (F_ISSET_ATOMIC(page, WT_PAGE_SPLIT_BLOCK))
+		__dmsg(ds, ", split-block");
 	if (F_ISSET_ATOMIC(page, WT_PAGE_SPLIT_INSERT))
 		__dmsg(ds, ", split-insert");
+	if (F_ISSET_ATOMIC(page, WT_PAGE_UPDATE_IGNORE))
+		__dmsg(ds, ", update-ignore");
 
 	if (mod != NULL)
 		switch (mod->rec_result) {
@@ -767,7 +768,7 @@ __debug_page_col_int(WT_DBG *ds, WT_PAGE *page, uint32_t flags)
 
 	WT_INTL_FOREACH_BEGIN(session, page, ref) {
 		__dmsg(ds, "\trecno %" PRIu64 "\n", ref->key.recno);
-		WT_RET(__debug_ref(ds, ref));
+		__debug_ref(ds, ref);
 	} WT_INTL_FOREACH_END;
 
 	if (LF_ISSET(WT_DEBUG_TREE_WALK))
@@ -841,7 +842,7 @@ __debug_page_row_int(WT_DBG *ds, WT_PAGE *page, uint32_t flags)
 	WT_INTL_FOREACH_BEGIN(session, page, ref) {
 		__wt_ref_key(page, ref, &p, &len);
 		__debug_item(ds, "K", p, len);
-		WT_RET(__debug_ref(ds, ref));
+		__debug_ref(ds, ref);
 	} WT_INTL_FOREACH_END;
 
 	if (LF_ISSET(WT_DEBUG_TREE_WALK))
@@ -951,8 +952,7 @@ __debug_update(WT_DBG *ds, WT_UPDATE *upd, bool hexbyte)
 			__dmsg(ds, "\tvalue {deleted}\n");
 		else if (hexbyte) {
 			__dmsg(ds, "\t{");
-			__debug_hex_byte(ds,
-			    ((uint8_t *)WT_UPDATE_DATA(upd))[0]);
+			__debug_hex_byte(ds, *(uint8_t *)WT_UPDATE_DATA(upd));
 			__dmsg(ds, "}\n");
 		} else
 			__debug_item(ds,
@@ -963,7 +963,7 @@ __debug_update(WT_DBG *ds, WT_UPDATE *upd, bool hexbyte)
  * __debug_ref --
  *	Dump a WT_REF structure.
  */
-static int
+static void
 __debug_ref(WT_DBG *ds, WT_REF *ref)
 {
 	WT_SESSION_IMPL *session;
@@ -992,14 +992,14 @@ __debug_ref(WT_DBG *ds, WT_REF *ref)
 	case WT_REF_SPLIT:
 		__dmsg(ds, "split");
 		break;
-	WT_ILLEGAL_VALUE(session);
+	default:
+		__dmsg(ds, "INVALID");
+		break;
 	}
 
-	WT_RET(__wt_ref_info(session, ref, &addr, &addr_size, NULL));
+	__wt_ref_info(ref, &addr, &addr_size, NULL);
 	__dmsg(ds, " %s\n",
 	    __wt_addr_string(session, addr, addr_size, ds->tmp));
-
-	return (0);
 }
 
 /*

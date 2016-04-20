@@ -1,5 +1,5 @@
 /*-
- * Public Domain 2014-2015 MongoDB, Inc.
+ * Public Domain 2014-2016 MongoDB, Inc.
  * Public Domain 2008-2014 WiredTiger, Inc.
  *
  * This is free and unencumbered software released into the public domain.
@@ -30,6 +30,7 @@
  *	configuration strings.
  */
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -99,7 +100,7 @@ main(void)
 	while ((ret = parser->next(parser, &k, &v)) == 0) {
 		printf("%.*s:", (int)k.len, k.str);
 		if (v.type == WT_CONFIG_ITEM_NUM)
-			printf("%d\n", (int)v.val);
+			printf("%" PRId64 "\n", v.val);
 		else
 			printf("%.*s\n", (int)v.len, v.str);
 	}
@@ -126,7 +127,7 @@ main(void)
 		    "log.file_max configuration: %s", wiredtiger_strerror(ret));
 		return (ret);
 	}
-	printf("log file max: %d\n", (int)v.val);
+	printf("log file max: %" PRId64 "\n", v.val);
 	/*! [nested get] */
 	ret = parser->close(parser);
 

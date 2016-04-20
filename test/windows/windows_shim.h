@@ -1,5 +1,5 @@
 /*-
- * Public Domain 2014-2015 MongoDB, Inc.
+ * Public Domain 2014-2016 MongoDB, Inc.
  * Public Domain 2008-2014 WiredTiger, Inc.
  *
  * This is free and unencumbered software released into the public domain.
@@ -44,6 +44,11 @@ typedef int u_int;
 #define	R_OK 04
 #define	X_OK R_OK
 
+/* MSVC Doesn't provide __func__, it has __FUNCTION__ */
+#ifdef _MSC_VER
+#define	__func__ __FUNCTION__
+#endif
+
 /* snprintf does not exist on <= VS 2013 */
 #if _MSC_VER < 1900
 #define	snprintf _wt_snprintf
@@ -68,11 +73,6 @@ struct timeval {
 };
 
 int gettimeofday(struct timeval* tp, void* tzp);
-
-/*
- * Emulate <sched.h>
- */
-int sched_yield(void);
 
 /*
  * Emulate <unistd.h>

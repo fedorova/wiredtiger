@@ -1,5 +1,5 @@
 /*-
- * Public Domain 2014-2015 MongoDB, Inc.
+ * Public Domain 2014-2016 MongoDB, Inc.
  * Public Domain 2008-2014 WiredTiger, Inc.
  *
  * This is free and unencumbered software released into the public domain.
@@ -218,7 +218,7 @@ main(void)
 	 */
 	ret = conn->close(conn, NULL);
 
-	printf("Searched for %d keys\n", ex_asynckeys.num_keys);
+	printf("Searched for %" PRIu32 " keys\n", ex_asynckeys.num_keys);
 
 	return (ret);
 }
