@@ -335,7 +335,7 @@ retry:
 			WT_ASSERT(session, txn_global->scan_count > 0);
 			(void)__wt_atomic_subiv32(&txn_global->scan_count, 1);
 			if (force) {
-				__wt_yield();
+				__wt_yield(session);
 				goto retry;
 			}
 		}

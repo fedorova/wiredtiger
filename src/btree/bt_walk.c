@@ -63,7 +63,7 @@ retry:	WT_INTL_INDEX_GET(session, ref->home, pindex);
 	 * references the wrong page. When internal pages split, their WT_REF
 	 * structure home values are updated; yield and wait for that to happen.
 	 */
-	__wt_yield();
+	__wt_yield(session);
 	goto retry;
 }
 
@@ -176,7 +176,7 @@ __ref_descend_prev(
 	 * We're passed a child page into which we're descending, and on which
 	 * we have a hazard pointer.
 	 */
-	for (;; __wt_yield()) {
+	for (;; __wt_yield(session)) {
 		/*
 		 * There's a split race when a cursor moving backwards through
 		 * the tree descends the tree. If we're splitting an internal

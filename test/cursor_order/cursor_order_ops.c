@@ -244,7 +244,7 @@ reverse_scan(void *arg)
 	    " starting: tid: %s, file: %s\n",
 	    id, tid, s->name);
 
-	__wt_yield();		/* Get all the threads created. */
+	__wt_yield(NULL);		/* Get all the threads created. */
 
 	if ((ret = cfg->conn->open_session(
 	    cfg->conn, NULL, "isolation=snapshot", &session)) != 0)
@@ -253,7 +253,7 @@ reverse_scan(void *arg)
 	    session, s->name, NULL, NULL, &cursor)) != 0)
 		testutil_die(ret, "session.open_cursor");
 	for (i = 0; i < s->nops && !cfg->thread_finish;
-	    ++i, ++s->reverse_scans, __wt_yield())
+	    ++i, ++s->reverse_scans, __wt_yield(NULL))
 		reverse_scan_op(cfg, session, cursor, s);
 	if ((ret = session->close(session, NULL)) != 0)
 		testutil_die(ret, "session.close");
@@ -330,7 +330,7 @@ append_insert(void *arg)
 	printf("write thread %2" PRIuMAX " starting: tid: %s, file: %s\n",
 	    id, tid, s->name);
 
-	__wt_yield();		/* Get all the threads created. */
+	__wt_yield(NULL);		/* Get all the threads created. */
 
 	if ((ret = cfg->conn->open_session(
 	    cfg->conn, NULL, "isolation=snapshot", &session)) != 0)
@@ -338,7 +338,7 @@ append_insert(void *arg)
 	if ((ret = session->open_cursor(
 	    session, s->name, NULL, NULL, &cursor)) != 0)
 		testutil_die(ret, "session.open_cursor");
-	for (i = 0; i < s->nops && !cfg->thread_finish; ++i, __wt_yield())
+	for (i = 0; i < s->nops && !cfg->thread_finish; ++i, __wt_yield(NULL))
 		append_insert_op(cfg, session, cursor, s);
 	if ((ret = session->close(session, NULL)) != 0)
 		testutil_die(ret, "session.close");

@@ -96,7 +96,7 @@ __wt_connection_close(WT_CONNECTION_IMPL *conn)
 		__wt_txn_update_oldest(session, true);
 		if (txn_global->oldest_id == txn_global->current)
 			break;
-		__wt_yield();
+		__wt_yield(session);
 	}
 
 	/* Clear any pending async ops. */

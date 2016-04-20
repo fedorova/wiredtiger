@@ -285,7 +285,7 @@ __wt_async_op_enqueue(WT_SESSION_IMPL *session, WT_ASYNC_OP_IMPL *op)
 	 */
 	WT_ORDERED_READ(cur_tail, async->tail_slot);
 	while (cur_tail == my_slot) {
-		__wt_yield();
+		__wt_yield(session);
 		WT_ORDERED_READ(cur_tail, async->tail_slot);
 	}
 
@@ -304,7 +304,7 @@ __wt_async_op_enqueue(WT_SESSION_IMPL *session, WT_ASYNC_OP_IMPL *op)
 	 */
 	WT_ORDERED_READ(cur_head, async->head);
 	while (cur_head != (my_alloc - 1)) {
-		__wt_yield();
+		__wt_yield(session);
 		WT_ORDERED_READ(cur_head, async->head);
 	}
 	WT_PUBLISH(async->head, my_alloc);

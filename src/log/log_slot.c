@@ -190,7 +190,7 @@ __wt_log_slot_switch(
 		    ret = __log_slot_switch_internal(session, myslot, forced));
 		if (ret == EBUSY) {
 			WT_STAT_FAST_CONN_INCR(session, log_slot_switch_busy);
-			__wt_yield();
+			__wt_yield(session);
 		}
 	} while (F_ISSET(myslot, WT_MYSLOT_CLOSE) || (retry && ret == EBUSY));
 	return (ret);
@@ -252,7 +252,7 @@ __wt_log_slot_new(WT_SESSION_IMPL *session)
 		 * If we didn't find any free slots signal the worker thread.
 		 */
 		(void)__wt_cond_auto_signal(session, conn->log_wrlsn_cond);
-		__wt_yield();
+		__wt_yield(session);
 	}
 	/* NOTREACHED */
 }
@@ -418,7 +418,7 @@ __wt_log_slot_join(WT_SESSION_IMPL *session, uint64_t mysize,
 		 * update it.  Yield and try again.
 		 */
 		WT_STAT_FAST_CONN_INCR(session, log_slot_races);
-		__wt_yield();
+		__wt_yield(session);
 	}
 	/*
 	 * We joined this slot.  Fill in our information to return to

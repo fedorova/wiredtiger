@@ -210,7 +210,7 @@ __evict_server(void *arg)
 			    !F_ISSET(cache, WT_CACHE_CLEAR_WALKS);
 			    spins++) {
 				if (spins < WT_THOUSAND)
-					__wt_yield();
+					__wt_yield(session);
 				else
 					__wt_sleep(0, WT_THOUSAND);
 			}
@@ -878,7 +878,7 @@ __wt_evict_file_exclusive_on(WT_SESSION_IMPL *session)
 	 * activity to drain.
 	 */
 	while (btree->evict_busy > 0)
-		__wt_yield();
+		__wt_yield(session);
 
 	if (0) {
 err:		--btree->evict_disabled;
@@ -1170,7 +1170,7 @@ retry:	while (slot < max_entries && ret == 0) {
 			    !F_ISSET(cache, WT_CACHE_CLEAR_WALKS);
 			    spins++) {
 				if (spins < WT_THOUSAND)
-					__wt_yield();
+					__wt_yield(session);
 				else
 					__wt_sleep(0, WT_THOUSAND);
 			}
@@ -1560,6 +1560,8 @@ __evict_get_ref(
 	WT_EVICT_QUEUE *evict_queue;
 	uint32_t candidates;
 
+	WT_BEGIN_FUNC(session);
+
 	cache = S2C(session)->cache;
 	*btreep = NULL;
 	*refp = NULL;
@@ -1590,7 +1592,7 @@ __evict_get_ref(
 	for (;;) {
 		if (__wt_spin_trylock(session, &evict_queue->evict_lock) == 0)
 			break;
-		__wt_yield();
+		__wt_yield(session);
 	}
 	/*
 	 * Only evict half of the pages before looking for more. The remainder
@@ -1653,6 +1655,8 @@ __evict_get_ref(
 	__wt_spin_unlock(session, &evict_queue->evict_lock);
 	__wt_spin_unlock(session, &cache->evict_queue_lock);
 
+done_ret:
+	WT_END_FUNC(session);
 	return ((*refp == NULL) ? WT_NOTFOUND : 0);
 }
 
@@ -1667,7 +1671,8 @@ __evict_page(WT_SESSION_IMPL *session, bool is_server)
 	WT_DECL_RET;
 	WT_REF *ref;
 
-	WT_RET(__evict_get_ref(session, is_server, &btree, &ref));
+	WT_BEGIN_FUNC(session);
+	WT_RET_DONE(__evict_get_ref(session, is_server, &btree, &ref));
 	WT_ASSERT(session, ref->state == WT_REF_LOCKED);
 
 	/*
@@ -1699,6 +1704,8 @@ __evict_page(WT_SESSION_IMPL *session, bool is_server)
 
 	(void)__wt_atomic_subv32(&btree->evict_busy, 1);
 
+done_ret:
+	WT_END_FUNC(session);
 	return (ret);
 }
 

@@ -190,6 +190,7 @@ connection_stats = [
     CacheStat('cache_inmem_splittable', 'in-memory page passed criteria to be split'),
     CacheStat('cache_lookaside_insert', 'lookaside table insert calls'),
     CacheStat('cache_lookaside_remove', 'lookaside table remove calls'),
+    CacheStat('cache_noevict_set', 'WT_BTREE_NO_EVICTION flag set'),
     CacheStat('cache_overhead', 'percentage overhead', 'no_clear,no_scale'),
     CacheStat('cache_pages_dirty', 'tracked dirty pages in the cache', 'no_clear,no_scale'),
     CacheStat('cache_pages_inuse', 'pages currently held in the cache', 'no_clear,no_scale'),

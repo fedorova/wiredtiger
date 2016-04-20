@@ -13,7 +13,9 @@
  *	Yield the thread of control.
  */
 void
-__wt_yield(void)
+__wt_yield(WT_SESSION_IMPL *session)
 {
+	WT_BEGIN_FUNC(session);
 	sched_yield();
+	WT_END_FUNC(session);
 }

@@ -539,6 +539,7 @@ static const char * const __stats_connection_desc[] = {
 	"block-manager: bytes written",
 	"block-manager: mapped blocks read",
 	"block-manager: mapped bytes read",
+	"cache: WT_BTREE_NO_EVICTION flag set",
 	"cache: bytes currently in the cache",
 	"cache: bytes read into cache",
 	"cache: bytes written from cache",
@@ -740,6 +741,7 @@ __wt_stat_connection_clear_single(WT_CONNECTION_STATS *stats)
 	stats->block_byte_write = 0;
 	stats->block_map_read = 0;
 	stats->block_byte_map_read = 0;
+	stats->cache_noevict_set = 0;
 		/* not clearing cache_bytes_inuse */
 	stats->cache_bytes_read = 0;
 	stats->cache_bytes_write = 0;
@@ -931,6 +933,7 @@ __wt_stat_connection_aggregate(
 	to->block_byte_write += WT_STAT_READ(from, block_byte_write);
 	to->block_map_read += WT_STAT_READ(from, block_map_read);
 	to->block_byte_map_read += WT_STAT_READ(from, block_byte_map_read);
+	to->cache_noevict_set += WT_STAT_READ(from, cache_noevict_set);
 	to->cache_bytes_inuse += WT_STAT_READ(from, cache_bytes_inuse);
 	to->cache_bytes_read += WT_STAT_READ(from, cache_bytes_read);
 	to->cache_bytes_write += WT_STAT_READ(from, cache_bytes_write);

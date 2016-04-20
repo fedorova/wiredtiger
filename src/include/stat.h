@@ -257,6 +257,7 @@ struct __wt_connection_stats {
 	int64_t block_byte_write;
 	int64_t block_map_read;
 	int64_t block_byte_map_read;
+	int64_t cache_noevict_set;
 	int64_t cache_bytes_inuse;
 	int64_t cache_bytes_read;
 	int64_t cache_bytes_write;

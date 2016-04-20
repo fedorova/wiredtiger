@@ -129,7 +129,7 @@ fill_db(void)
 		if (fprintf(fp, "%" PRIu64 "\n", i) == -1)
 			testutil_die(errno, "fprintf");
 		if (i % 5000)
-			__wt_yield();
+			__wt_yield(NULL);
 	}
 }
 

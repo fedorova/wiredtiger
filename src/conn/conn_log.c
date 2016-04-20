@@ -374,7 +374,7 @@ __log_file_server(void *arg)
 			 * until it is set.  This should rarely happen.
 			 */
 			while (log->log_close_lsn.l.file < filenum)
-				__wt_yield();
+				__wt_yield(session);
 
 			if (__wt_log_cmp(
 			    &log->write_lsn, &log->log_close_lsn) >= 0) {
@@ -477,7 +477,7 @@ __log_file_server(void *arg)
 				 * thread a chance to run and try again in
 				 * this case.
 				 */
-				__wt_yield();
+				__wt_yield(session);
 				continue;
 			}
 		}
@@ -699,7 +699,7 @@ __log_wrlsn_server(void *arg)
 		 * If __wt_log_wrlsn did work we want to yield instead of sleep.
 		 */
 		if (yield++ < WT_THOUSAND)
-			__wt_yield();
+			__wt_yield(session);
 		else
 			/*
 			 * Send in false because if we did any work we would

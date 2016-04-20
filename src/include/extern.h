@@ -779,4 +779,4 @@ extern void __wt_sleep(uint64_t seconds, uint64_t micro_seconds);
 extern void __wt_stream_set_line_buffer(FILE *fp);
 extern void __wt_stream_set_no_buffer(FILE *fp);
 extern void __wt_thread_id(char *buf, size_t buflen);
-extern void __wt_yield(void);
+extern void __wt_yield(WT_SESSION_IMPL *session);

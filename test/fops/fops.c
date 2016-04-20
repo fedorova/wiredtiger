@@ -103,12 +103,12 @@ fop(void *arg)
 	u_int i;
 
 	id = (uintptr_t)arg;
-	__wt_yield();		/* Get all the threads created. */
+	__wt_yield(NULL);		/* Get all the threads created. */
 
 	s = &run_stats[id];
 	__wt_random_init(&rnd);
 
-	for (i = 0; i < nops; ++i, __wt_yield())
+	for (i = 0; i < nops; ++i, __wt_yield(NULL))
 		switch (__wt_random(&rnd) % 10) {
 		case 0:
 			++s->bulk;
