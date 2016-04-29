@@ -10,6 +10,20 @@
  */
 
 #ifdef HAVE_TIMING
+#define WT_TRACE_RECORD(session, string)				       \
+	{	                                                               \
+	struct timespec ts_begin, ts_end;			               \
+	if(session != NULL)                                                    \
+        if(__wt_epoch(session, &ts_begin) == 0)	{		               \
+	        if(session->timing_log !=NULL) {                               \
+        		fprintf(session->timing_log, "* [%s] %d %ld\n",        \
+				string, (session)->id, 		               \
+				ts_begin.tv_sec * WT_BILLION +		       \
+				ts_begin.tv_nsec);			       \
+	        }                                                              \
+	}                                                                      \
+	}
+
 #define WT_BEGIN_FUNC(session)						       \
 	{	                                                               \
 	struct timespec ts_begin, ts_end;			               \
@@ -29,7 +43,7 @@
 	if(session != NULL)                                                    \
         if(__wt_epoch(session, &ts_begin) == 0)			               \
 	        if(session->timing_log !=NULL)                                 \
-        		fprintf(session->timing_log, "<-- %s %d %ld\n",   \
+        		fprintf(session->timing_log, "<-- %s %d %ld\n",        \
 				__func__, (session)->id, 		       \
 				ts_begin.tv_sec * WT_BILLION +		       \
 				ts_begin.tv_nsec);			       \
@@ -68,10 +82,10 @@
 	if(session != NULL)                                                    \
         if(__wt_epoch(session, &ts_begin) == 0)			               \
 	        if(session->timing_log !=NULL)                                 \
-        		fprintf(session->timing_log, "--> %s %d %ld %s\n",     \
+        		fprintf(session->timing_log, "--> %s %d %ld %s.%p\n",  \
 				__func__, (session)->id,                       \
 				ts_begin.tv_sec * WT_BILLION +		       \
-				ts_begin.tv_nsec, spinlock->name);	       \
+				ts_begin.tv_nsec, spinlock->name, spinlock);   \
          }
 
 #define WT_END_SPINLOCK(session, spinlock)                                     \
@@ -80,20 +94,47 @@
 	if(session != NULL)                                                    \
         if(__wt_epoch(session, &ts_begin) == 0)			               \
 	        if(session->timing_log !=NULL)                                 \
-        		fprintf(session->timing_log, "<-- %s %d %ld %s\n",     \
+        		fprintf(session->timing_log, "<-- %s %d %ld %s.%p\n",  \
 				__func__, (session)->id,                       \
 				ts_begin.tv_sec * WT_BILLION +		       \
-				ts_begin.tv_nsec, spinlock->name);	       \
-         }
+				ts_begin.tv_nsec, spinlock->name, spinlock);   \
+	}
 #else
 
 #error Unknown spinlock type
 
 #endif
+/* Macros for other locks */
+#define WT_BEGIN_LOCK(session, lock)                                           \
+	{								       \
+	struct timespec ts_begin, ts_end;			               \
+	if(session != NULL)                                                    \
+        if(__wt_epoch(session, &ts_begin) == 0)			               \
+	        if(session->timing_log !=NULL)                                 \
+        		fprintf(session->timing_log, "--> %s %d %ld %p\n",     \
+				__func__, (session)->id,                       \
+				ts_begin.tv_sec * WT_BILLION +		       \
+				ts_begin.tv_nsec, lock);	               \
+         }
+
+#define WT_END_LOCK(session, lock)                                             \
+	{								       \
+	struct timespec ts_begin, ts_end;			               \
+	if(session != NULL)                                                    \
+        if(__wt_epoch(session, &ts_begin) == 0)			               \
+	        if(session->timing_log !=NULL)                                 \
+        		fprintf(session->timing_log, "<-- %s %d %ld %p\n",     \
+				__func__, (session)->id,                       \
+				ts_begin.tv_sec * WT_BILLION +		       \
+				ts_begin.tv_nsec, lock);	               \
+         }
 
 #else
+#define WT_TRACE_RECORD(session, string)
 #define WT_BEGIN_FUNC(session)
 #define WT_END_FUNC(session)
 #define WT_BEGIN_SPINLOCK(session, spinlock)
 #define WT_END_SPINLOCK(session, spinlock)
+#define WT_BEGIN_LOCK(session, spinlock)
+#define WT_END_LOCK(session, spinlock)
 #endif

@@ -17,8 +17,12 @@ __wt_sleep(uint64_t seconds, uint64_t micro_seconds)
 {
 	struct timeval t;
 
+	WT_BEGIN_FUNC(NULL);
+
 	t.tv_sec = (time_t)(seconds + micro_seconds / WT_MILLION);
 	t.tv_usec = (suseconds_t)(micro_seconds % WT_MILLION);
 
 	(void)select(0, NULL, NULL, NULL, &t);
+
+	WT_END_FUNC(NULL);
 }
