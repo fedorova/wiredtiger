@@ -53,12 +53,15 @@ __wt_cond_wait_signal(
 	WT_DECL_RET;
 	bool locked;
 
+	WT_BEGIN_FUNC(session);
 	locked = false;
 
 	/* Fast path if already signalled. */
 	*signalled = true;
-	if (__wt_atomic_addi32(&cond->waiters, 1) == 0)
-		return (0);
+	if (__wt_atomic_addi32(&cond->waiters, 1) == 0) {
+		ret = 0;
+		goto done;
+	}
 
 	/*
 	 * !!!
@@ -100,6 +103,8 @@ __wt_cond_wait_signal(
 
 err:	if (locked)
 		WT_TRET(pthread_mutex_unlock(&cond->mtx));
+done:
+	WT_END_FUNC(session);
 	if (ret == 0)
 		return (0);
 	WT_RET_MSG(session, ret, "pthread_cond_wait");
