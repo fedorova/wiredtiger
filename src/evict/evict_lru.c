@@ -213,7 +213,7 @@ __evict_server(void *arg)
 					__wt_yield(session);
 				}
 				else
-					__wt_sleep(0, WT_THOUSAND);
+					__wt_sleep(session, 0, WT_THOUSAND);
 			}
 			/*
 			 * If we gave up acquiring the lock, that indicates a
@@ -667,8 +667,6 @@ __evict_pass(WT_SESSION_IMPL *session, bool is_server)
 			WT_ERR(__evict_lru_walk(session));
 			__wt_spin_unlock(session, &cache->evict_pass_lock);
 			locked = false;
-			WT_TRACE_RECORD(session,
-					"evict_pass continue");
 		}
 
 		ret = __evict_lru_pages(session, is_server);
@@ -691,7 +689,7 @@ __evict_pass(WT_SESSION_IMPL *session, bool is_server)
 			 * that can free space in cache, such as LSM discarding
 			 * handles.
 			 */
-			__wt_sleep(0, WT_THOUSAND * (uint64_t)loop);
+			__wt_sleep(session, 0, WT_THOUSAND * (uint64_t)loop);
 			WT_TRACE_RECORD(session,
 					"evict_pass sleep");
 			if (loop == 100) {
@@ -945,45 +943,6 @@ __wt_evict_file_exclusive_off(WT_SESSION_IMPL *session)
 	__wt_spin_unlock(session, &cache->evict_walk_lock);
 }
 
-#if 0
-/*
- * __evict_lru_pages --
- *	Get pages from the LRU queue to evict.
- */
-static int
-__evict_lru_pages(WT_SESSION_IMPL *session, bool is_server)
-{
-	WT_CACHE *cache;
-	WT_DECL_RET;
-	uint64_t app_evict_percent, total_evict;
-
-	/*
-	 * The server will not help evict if the workers are coping with
-	 * eviction workload, that is, if fewer than the threshold of the
-	 * pages are evicted by application threads.
-	 */
-	if (is_server && S2C(session)->evict_workers > 1) {
-		cache = S2C(session)->cache;
-		total_evict = cache->app_evicts +
-		    cache->server_evicts + cache->worker_evicts;
-		app_evict_percent = (100 * cache->app_evicts) /
-			(total_evict + 1);
-		if (app_evict_percent < APP_EVICT_THRESHOLD) {
-			WT_STAT_FAST_CONN_INCR(session,
-			    cache_eviction_server_not_evicting);
-			return (0);
-		}
-	}
-
-	/*
-	 * Reconcile and discard some pages: EBUSY is returned if a page fails
-	 * eviction because it's unavailable, continue in that case.
-	 */
-	while ((ret = __evict_page(session, is_server)) == 0 || ret == EBUSY)
-		;
-	return (ret);
-}
-#else
 
 #define	APP_EVICT_THRESHOLD	3	/* Threshold to help evict */
 /*
@@ -1029,7 +988,6 @@ done:
 	WT_END_FUNC(session);
 	return (ret);
 }
-#endif
 
 /*
  * __evict_lru_walk --
@@ -1043,9 +1001,10 @@ __evict_lru_walk(WT_SESSION_IMPL *session)
 	WT_EVICT_QUEUE *evict_queue;
 	uint64_t cutoff, read_gen_oldest;
 	uint32_t candidates, entries, queue_index;
+#ifdef HAVE_TIMING
 #define TRACE_STRLEN 32
 	char trace_str[32];
-
+#endif
 	WT_BEGIN_FUNC(session);
 
 	cache = S2C(session)->cache;
@@ -1155,11 +1114,13 @@ __evict_lru_walk(WT_SESSION_IMPL *session)
 			evict_queue->evict_candidates = candidates;
 		}
 	}
+#ifdef HAVE_TIMING
 	snprintf(trace_str, TRACE_STRLEN, "evict candidates %d",
 		 evict_queue->evict_candidates);
 	WT_TRACE_RECORD(session, (char*)trace_str);
-
+#endif
 	__wt_spin_unlock(session, &evict_queue->evict_lock);
+
 	/*
 	 * Now we can set the next queue.
 	 */
@@ -1195,6 +1156,10 @@ __evict_walk(WT_SESSION_IMPL *session, uint32_t queue_index)
 	u_int max_entries, prev_slot, retries;
 	u_int slot, start_slot, spins;
 	bool dhandle_locked, incr;
+#ifdef HAVE_TIMING
+#define TRACE_STRLEN 32
+	char trace_str[32];
+#endif
 
 	conn = S2C(session);
 	cache = S2C(session)->cache;
@@ -1233,7 +1198,7 @@ retry:	while (slot < max_entries && ret == 0) {
 				if (spins < WT_THOUSAND)
 					__wt_yield(session);
 				else
-					__wt_sleep(0, WT_THOUSAND);
+					__wt_sleep(session, 0, WT_THOUSAND);
 			}
 			if (ret != 0)
 				break;
@@ -1365,6 +1330,11 @@ retry:	while (slot < max_entries && ret == 0) {
 	}
 
 	evict_queue->evict_entries = slot;
+#ifdef HAVE_TIMING
+	snprintf(trace_str, TRACE_STRLEN, "evict entries %d",
+		 evict_queue->evict_entries);
+	WT_TRACE_RECORD(session, (char*)trace_str);
+#endif
 	WT_END_FUNC(session);
 	return (ret);
 }

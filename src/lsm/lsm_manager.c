@@ -383,7 +383,7 @@ __lsm_manager_run_server(WT_SESSION_IMPL *session)
 	dhandle_locked = false;
 
 	while (F_ISSET(conn, WT_CONN_SERVER_RUN)) {
-		__wt_sleep(0, 10000);
+		__wt_sleep(session, 0, 10000);
 		if (TAILQ_EMPTY(&conn->lsmqh))
 			continue;
 		__wt_spin_lock(session, &conn->dhandle_lock);

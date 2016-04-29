@@ -634,6 +634,6 @@ skip_evict:
 		}
 		sleep_cnt = WT_MIN(sleep_cnt + WT_THOUSAND, 10000);
 		WT_STAT_FAST_CONN_INCRV(session, page_sleep, sleep_cnt);
-		__wt_sleep(0, sleep_cnt);
+		__wt_sleep(session, 0, sleep_cnt);
 	}
 }

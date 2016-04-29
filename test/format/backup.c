@@ -144,7 +144,7 @@ backup(void *arg)
 		 */
 		while ((ret = session->open_cursor(
 		    session, "backup:", NULL, config, &backup_cursor)) == EBUSY)
-			__wt_yield();
+			__wt_yield(NULL);
 		if (ret != 0)
 			testutil_die(ret, "session.open_cursor: backup");
 
