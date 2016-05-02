@@ -689,7 +689,7 @@ __evict_pass(WT_SESSION_IMPL *session, bool is_server)
 			 * that can free space in cache, such as LSM discarding
 			 * handles.
 			 */
-			__wt_sleep(session, 0, WT_THOUSAND * (uint64_t)loop);
+//			__wt_sleep(session, 0, WT_THOUSAND * (uint64_t)loop);
 			WT_TRACE_RECORD(session,
 					"evict_pass sleep");
 			if (loop == 100) {
