@@ -2,6 +2,7 @@
 
 import sys
 import argparse
+import matplotlib.pyplot as plt
 
 #
 # LogRecord contains all the fields we expect in the log record.
@@ -28,8 +29,8 @@ class LockRecord:
         self.timeAcquired = long(timeAcquired);
 
     def printLockRecord(self):
-        print(self.name + ": [" + str(self.thread) + "]" +
-              str(self.timeAcquired));
+        print(self.name + ": [" + str(self.thread) + "] " +
+              str(self.timeAcquired) + "\n");
 
 #
 # PerfData class contains informtation about the function running
@@ -37,9 +38,12 @@ class LockRecord:
 
 class PerfData:
 
-    def __init__(self):
+    def __init__(self, name, threadID):
+        self.name = name;
+        self.threadID = threadID;
         self.numCalls = 0;
         self.totalRunningTime = long(0);
+        self.runningTimes = [];
 
     def getAverage(self):
         return (float(self.totalRunningTime) / float(self.numCalls));
@@ -50,12 +54,22 @@ class PerfData:
         print("\t Average running time: "
               + str(long(self.getAverage())) + " ns.");
 
+    def showHistogram(self):
+        plt.figure();
+        plt.hist(self.runningTimes, bins=50, log=True);
+        plt.title("Thread " + str(self.threadID) + ": " + self.name)
+        plt.xlabel("Running time (nanoseconds)")
+        plt.ylabel("Frequency")
+        filename = "t" + str(self.threadID) + "." + self.name + ".png";
+        plt.savefig(filename);
+
 #
 # LockData class contains information about lock-related functions
 
 class LockData:
 
-    def __init__(self):
+    def __init__(self, name):
+        self.name = name;
         self.numAcquire = 0;
         self.numRelease = 0;
         self.numTryLock = 0;
@@ -64,6 +78,7 @@ class LockData:
         self.timeRelease = 0;
         self.timeHeld = 0;
         self.lastAcquireRecord = None;
+        self.lockHeldTimes = [];
 
     def getAverageAcquire(self):
         if(self.numAcquire > 0):
@@ -88,6 +103,18 @@ class LockData:
             return (float(self.timeHeld) / float(self.numRelease));
         else:
             return 0;
+
+    def showHistogram(self):
+        if(len(self.lockHeldTimes) < 1):
+            return;
+
+        plt.figure();
+        plt.hist(self.lockHeldTimes, bins=50, log=True);
+        plt.title("Lock " + self.name)
+        plt.xlabel("Lock held time (nanoseconds)")
+        plt.ylabel("Frequency")
+        filename = "lock-" + self.name + ".png";
+        plt.savefig(filename);
 
     def printSelf(self):
         print("\t Num acquire: " + str(self.numAcquire));
@@ -172,12 +199,12 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
         lockName = lockName + word + " ";
 
     if(not locksDictionary.has_key(lockName)):
-        lockData = LockData();
+        lockData = LockData(lockName);
         locksDictionary[lockName] = lockData;
 
     lockData = locksDictionary[lockName];
     lastAcquireRecord = lockData.lastAcquireRecord;
-    
+
     # If this is an acquire or trylock, simply update the stats in the
     # lockData object and remember the lastAcquire record, so we can
     # later match it with a corresponding lock release.
@@ -232,9 +259,11 @@ def do_lock_processing(locksDictionary, logRec, runningTime,
         if(lastAcquireRecord is None):
             print("Could not find a matching acquire for: ")
             logRec.printLogRecord();
+            print("Lock name: " + lockName);
         else:
             lockHeldTime = logRec.time - lastAcquireRecord.timeAcquired;
             lockData.timeHeld = lockData.timeHeld + lockHeldTime;
+            lockData.lockHeldTimes.append(long(lockHeldTime));
 
             # Reset the lockAcquire record to null
             lockData.lastAcquireRecord = None;
@@ -323,12 +352,13 @@ def parse_file(fname):
                     thisFileDict = perFile[fname];
 
                     if(not thisFileDict.has_key(stackRec.func)):
-                        newPDR = PerfData();
+                        newPDR = PerfData(stackRec.func, thread);
                         thisFileDict[stackRec.func] = newPDR;
 
                     pdr = thisFileDict[stackRec.func];
                     pdr.totalRunningTime = pdr.totalRunningTime + runningTime;
                     pdr.numCalls = pdr.numCalls + 1;
+                    pdr.runningTimes.append(runningTime);
                     found = True
 
                     # If this is a lock-related function, do lock-related
@@ -367,6 +397,7 @@ def main():
         for fkey, pdr in perFileDict.iteritems():
             print(fkey + ":");
             pdr.printSelf();
+            pdr.showHistogram();
 
         lockDataDict = perFileLocks[key];
 
@@ -374,6 +405,7 @@ def main():
         for lockKey, lockData in lockDataDict.iteritems():
             print("Lock \"" + lockKey + "\":");
             lockData.printSelf();
+            lockData.showHistogram();
 
         print("------------------------------");
 
