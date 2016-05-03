@@ -317,7 +317,7 @@ __wt_fair_lock(WT_SESSION_IMPL *session, WT_FAIR_LOCK *lock)
 		if (++pause_cnt < WT_THOUSAND)
 			WT_PAUSE();
 		else
-			__wt_sleep(0, 10);
+			__wt_sleep(session, 0, 10);
 	}
 
 	/*

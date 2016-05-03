@@ -83,7 +83,7 @@ cycle_idle_tables(void *arg)
 	for (cycle_count = 0; cfg->idle_cycle_run; ++cycle_count) {
 		snprintf(uri, 512, "%s_cycle%07d", cfg->uris[0], cycle_count);
 		/* Don't busy cycle in this loop. */
-		__wt_sleep(1, 0);
+		__wt_sleep((WT_SESSION_IMPL*)session, 1, 0);
 
 		/* Setup a start timer. */
 		if ((ret = __wt_epoch(NULL, &start)) != 0) {
@@ -130,7 +130,7 @@ cycle_idle_tables(void *arg)
 		 * expected return when checkpoints are happening.
 		 */
 		while ((ret = session->drop(session, uri, "force")) == EBUSY)
-			__wt_sleep(1, 0);
+			__wt_sleep((WT_SESSION_IMPL*)session, 1, 0);
 
 		if (ret != 0 && ret != EBUSY) {
 			lprintf(cfg, ret, 0,

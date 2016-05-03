@@ -116,7 +116,7 @@ __wt_attach(WT_SESSION_IMPL *session)
 
 	/* Sleep forever, the debugger will interrupt us when it attaches. */
 	for (;;)
-		__wt_sleep(10, 0);
+		__wt_sleep(session, 10, 0);
 #else
 	WT_UNUSED(session);
 #endif

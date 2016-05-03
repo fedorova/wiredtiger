@@ -25,7 +25,7 @@
 		case EMFILE:						\
 		case ENFILE:						\
 		case ENOSPC:						\
-			__wt_sleep(0L, 50000L);				\
+			__wt_sleep(0, 0L, 50000L);			\
 			continue;					\
 		default:						\
 			break;						\

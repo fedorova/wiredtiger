@@ -77,7 +77,7 @@ __wt_page_out(WT_SESSION_IMPL *session, WT_PAGE **pagep)
 	for (hp = NULL, i = 0; i < 100; i++) {
 		if ((hp = __wt_page_hazard_check(session, page)) == NULL)
 			break;
-		__wt_sleep(0, 10000);
+		__wt_sleep(session, 0, 10000);
 	}
 	if (hp != NULL)
 		__wt_errx(session,

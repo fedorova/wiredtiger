@@ -13,7 +13,7 @@
  *	Pause the thread of control.
  */
 void
-__wt_sleep(uint64_t seconds, uint64_t micro_seconds)
+__wt_sleep(WT_SESSION_IMPL *session, uint64_t seconds, uint64_t micro_seconds)
 {
 	DWORD dwMilliseconds;
 

@@ -212,7 +212,7 @@ __evict_server(void *arg)
 				if (spins < WT_THOUSAND)
 					__wt_yield(session);
 				else
-					__wt_sleep(0, WT_THOUSAND);
+					__wt_sleep(session, 0, WT_THOUSAND);
 			}
 			/*
 			 * If we gave up acquiring the lock, that indicates a
@@ -668,7 +668,7 @@ __evict_pass(WT_SESSION_IMPL *session)
 			 * that can free space in cache, such as LSM discarding
 			 * handles.
 			 */
-			__wt_sleep(0, WT_THOUSAND * (uint64_t)loop);
+			__wt_sleep(session, 0, WT_THOUSAND * (uint64_t)loop);
 			WT_TRACE_RECORD(session,
 					"evict_pass sleep");
 			if (loop == 100) {
@@ -1169,7 +1169,7 @@ retry:	while (slot < max_entries && ret == 0) {
 				if (spins < WT_THOUSAND)
 					__wt_yield(session);
 				else
-					__wt_sleep(0, WT_THOUSAND);
+					__wt_sleep(session, 0, WT_THOUSAND);
 			}
 			if (ret != 0)
 				break;

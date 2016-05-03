@@ -767,7 +767,7 @@ extern int __wt_win_unmap(WT_FILE_HANDLE *file_handle, WT_SESSION *wt_session, v
 extern uint64_t __wt_strtouq(const char *nptr, char **endptr, int base);
 extern void __wt_abort(WT_SESSION_IMPL *session) WT_GCC_FUNC_DECL_ATTRIBUTE((noreturn));
 extern void __wt_free_int(WT_SESSION_IMPL *session, const void *p_arg);
-extern void __wt_sleep(uint64_t seconds, uint64_t micro_seconds);
+extern void __wt_sleep(WT_SESSION_IMPL *session, uint64_t seconds, uint64_t micro_seconds);
 extern void __wt_stream_set_line_buffer(FILE *fp);
 extern void __wt_stream_set_no_buffer(FILE *fp);
 extern void __wt_thread_id(char *buf, size_t buflen);

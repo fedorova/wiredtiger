@@ -13,7 +13,7 @@
  *	Yield the thread of control.
  */
 void
-__wt_yield(void)
+__wt_yield(WT_SESSION_IMPL *session)
 {
 	SwitchToThread();
 }
