@@ -12,7 +12,7 @@ def looks_like_lock(str):
             return True;
     return False;
 
-def parse_file(fname, includeTime):
+def parse_file(fname):
 
     print "Parsing file " + fname;
 
@@ -51,8 +51,7 @@ def parse_file(fname, includeTime):
 
                 try:
                     thread = int(words[i+1]);
-                    if(includeTime):
-                        time = long(words[i+2]);
+                    time = long(words[i+2]);
                 except (ValueError, IndexError):
                     print "Could not parse: " + line;
                     continue;
@@ -61,8 +60,7 @@ def parse_file(fname, includeTime):
             try:
                 event = words[1];
                 thread = int(words[2]);
-                if(includeTime):
-                    time = long(words[3]);
+                time = long(words[3]);
             except ValueError:
                 print "Could not parse: " + line;
                 continue;
@@ -93,17 +91,12 @@ def main():
                                      'Process performance log files');
     parser.add_argument('files', type=str, nargs='+',
                         help='log files to process');
-    parser.add_argument("--time", dest='includeTime', action='store_true',
-                        help="Timestamps will be included the log "
-                        "if this option is enabled");
-    parser.set_defaults(includeTime=False);
 
     args = parser.parse_args();
     print args.files;
-    print args.includeTime
 
     for fname in args.files:
-        parse_file(fname, args.includeTime);
+        parse_file(fname);
 
 
 if __name__ == '__main__':
