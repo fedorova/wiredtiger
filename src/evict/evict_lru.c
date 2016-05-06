@@ -1085,7 +1085,7 @@ __evict_lru_walk(WT_SESSION_IMPL *session)
 #ifdef HAVE_TIMING
 	snprintf(trace_str, TRACE_STRLEN, "evict candidates %d",
 		 evict_queue->evict_candidates);
-	WT_TRACE_RECORD(session, (char*)trace_str);
+//	WT_TRACE_RECORD(session, (char*)trace_str);
 #endif
 	__wt_spin_unlock(session, &evict_queue->evict_lock);
 
@@ -1093,10 +1093,14 @@ __evict_lru_walk(WT_SESSION_IMPL *session)
 	 * Now we can set the next queue.
 	 */
 	__wt_spin_lock(session, &cache->evict_queue_lock);
-	if (cache->evict_current == NULL)
+	if (cache->evict_current == NULL) {
 		WT_STAT_FAST_CONN_INCR(session, cache_eviction_queue_empty);
-	else
+		WT_TRACE_RECORD(session, "eviction queue empty");
+	}
+	else {
 		WT_STAT_FAST_CONN_INCR(session, cache_eviction_queue_not_empty);
+		WT_TRACE_RECORD(session, "eviction queue not empty");
+	}
 
 	cache->evict_current = evict_queue->evict_queue;
 	cache->evict_current_queue = evict_queue;

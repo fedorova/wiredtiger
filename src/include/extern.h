@@ -772,4 +772,3 @@ extern void __wt_stream_set_line_buffer(FILE *fp);
 extern void __wt_stream_set_no_buffer(FILE *fp);
 extern void __wt_thread_id(char *buf, size_t buflen);
 extern void __wt_yield(WT_SESSION_IMPL *session);
-
