@@ -23,7 +23,7 @@ def parse_file(fname):
         return;
 
     try:
-        out_fname = fname + ".perfume"
+        out_fname = fname + ".synoptic"
         outputFile = open(out_fname, "w");
     except:
         print "Could not open file " + out_fname;
