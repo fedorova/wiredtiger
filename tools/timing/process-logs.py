@@ -383,6 +383,10 @@ def main():
     parser.add_argument('files', type=str, nargs='+',
                         help='log files to process');
 
+    parser.add_argument('--generate-histograms',
+                        dest='histogram', action='store_true');
+    parser.set_defaults(histogram=False);
+
     args = parser.parse_args();
     print args.files;
 
@@ -397,7 +401,8 @@ def main():
         for fkey, pdr in perFileDict.iteritems():
             print(fkey + ":");
             pdr.printSelf();
-            pdr.showHistogram();
+            if (args.histogram):
+                pdr.showHistogram();
 
         lockDataDict = perFileLocks[key];
 
@@ -405,7 +410,8 @@ def main():
         for lockKey, lockData in lockDataDict.iteritems():
             print("Lock \"" + lockKey + "\":");
             lockData.printSelf();
-            lockData.showHistogram();
+            if (args.histogram):
+                lockData.showHistogram();
 
         print("------------------------------");
 
