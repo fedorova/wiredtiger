@@ -278,9 +278,9 @@ __evict_server(WT_SESSION_IMPL *session, bool *did_work)
 		    session, &conn->dhandle_lock)) == EBUSY &&
 		    cache->pass_intr == 0; spins++) {
 			if (spins < WT_THOUSAND)
-				__wt_yield();
+				__wt_yield(session);
 			else
-				__wt_sleep(0, WT_THOUSAND);
+				__wt_sleep(session, 0, WT_THOUSAND);
 		}
 		/*
 		 * If we gave up acquiring the lock, that indicates a
@@ -1636,7 +1636,7 @@ __evict_get_ref(
 			ret = WT_NOTFOUND;
 			goto done_ret;
 		}
-		__wt_yield();
+		__wt_yield(session);
 	}
 
 	/*

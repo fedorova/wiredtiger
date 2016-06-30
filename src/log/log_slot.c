@@ -103,7 +103,7 @@ retry:
 	 */
 	while (WT_LOG_SLOT_UNBUFFERED_ISSET(old_state) &&
 	    slot->slot_unbuffered == 0)
-		__wt_yield();
+		__wt_yield(session);
 
 	end_offset =
 	    WT_LOG_SLOT_JOINED_BUFFERED(old_state) + slot->slot_unbuffered;
