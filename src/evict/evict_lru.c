@@ -269,7 +269,7 @@ __evict_server(WT_SESSION_IMPL *session, bool *did_work)
 	orig_pages_evicted = cache->pages_evicted;
 
 	/* Evict pages from the cache as needed. */
-	WT_RET(__evict_pass(session));
+	WT_RET_DONE(__evict_pass(session));
 
 	if (!F_ISSET(conn, WT_CONN_EVICTION_RUN))
 		goto done_ret;
@@ -512,11 +512,12 @@ __evict_helper(WT_SESSION_IMPL *session)
 		WT_RET_DONE(__wt_cond_wait(
 		    session, cache->evict_waiter_cond, 10000));
 	else
-		WT_RET_DONE(ret);
+		goto done_ret;
 
 done_ret:
 	WT_END_FUNC(session);
-	return ret;
+	WT_RET(ret);
+	return (0);
 }
 
 /*
