@@ -26,40 +26,11 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <sys/stat.h>
-#ifndef _WIN32
-#include <sys/time.h>
-#endif
-#include <sys/types.h>
-
-#include <assert.h>
-#include <ctype.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <limits.h>
-#ifndef _WIN32
-#include <pthread.h>
-#endif
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-#include <time.h>
-
-#include "test_util.i"
+#include "test_util.h"
 
 #ifdef BDB
+#include <assert.h>
 #include <db.h>
-#endif
-
-#if defined(__GNUC__)
-#define	WT_GCC_ATTRIBUTE(x)	__attribute__(x)
-#else
-#define	WT_GCC_ATTRIBUTE(x)
 #endif
 
 #define	EXTPATH	"../../ext/"			/* Extensions path */
@@ -144,7 +115,8 @@ typedef struct {
 	int replay;				/* Replaying a run. */
 	int workers_finished;			/* Operations completed */
 
-	pthread_rwlock_t backup_lock;		/* Hot backup running */
+	pthread_rwlock_t backup_lock;		/* Backup running */
+	pthread_rwlock_t checkpoint_lock;	/* Checkpoint running */
 
 	WT_RAND_STATE rnd;			/* Global RNG state */
 
@@ -288,7 +260,7 @@ typedef struct {
 #define	TINFO_COMPLETE	2			/* Finished */
 #define	TINFO_JOINED	3			/* Resolved */
 	volatile int state;			/* state */
-} TINFO WT_GCC_ATTRIBUTE((aligned(WT_CACHE_LINE_ALIGNMENT)));
+} TINFO WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT);
 
 #ifdef HAVE_BERKELEY_DB
 void	 bdb_close(void);
@@ -308,9 +280,6 @@ void	 config_file(const char *);
 void	 config_print(int);
 void	 config_setup(void);
 void	 config_single(const char *, int);
-void	*dmalloc(size_t);
-void	*drealloc(void *, size_t);
-void	*dstrdup(const void *);
 void	 fclose_and_clear(FILE **);
 void	 key_gen(WT_ITEM *, uint64_t);
 void	 key_gen_insert(WT_RAND_STATE *, WT_ITEM *, uint64_t);

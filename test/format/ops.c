@@ -103,8 +103,7 @@ wts_ops(int lastrun)
 	}
 
 	/* Create thread structure; start the worker threads. */
-	if ((tinfo = calloc((size_t)g.c_threads, sizeof(*tinfo))) == NULL)
-		testutil_die(errno, "calloc");
+	tinfo = dcalloc((size_t)g.c_threads, sizeof(*tinfo));
 	for (i = 0; i < g.c_threads; ++i) {
 		tinfo[i].id = (int)i + 1;
 		tinfo[i].state = TINFO_RUNNING;
@@ -505,14 +504,25 @@ ops(void *arg)
 		/* Checkpoint the database. */
 		if (tinfo->ops == ckpt_op && g.c_checkpoints) {
 			/*
-			 * LSM and data-sources don't support named checkpoints,
-			 * and we can't drop a named checkpoint while there's a
-			 * cursor open on it, otherwise 20% of the time name the
-			 * checkpoint.
+			 * Checkpoints are single-threaded inside WiredTiger,
+			 * skip our checkpoint if another thread is already
+			 * doing one.
 			 */
-			if (DATASOURCE("helium") || DATASOURCE("kvsbdb") ||
-			    DATASOURCE("lsm") ||
-			    readonly || mmrand(&tinfo->rnd, 1, 5) == 1)
+			ret = pthread_rwlock_trywrlock(&g.checkpoint_lock);
+			if (ret == EBUSY)
+				goto skip_checkpoint;
+			testutil_check(ret);
+
+			/*
+			 * LSM and data-sources don't support named checkpoints
+			 * and we can't drop a named checkpoint while there's a
+			 * backup in progress, otherwise name the checkpoint 5%
+			 * of the time.
+			 */
+			if (mmrand(&tinfo->rnd, 1, 20) != 1 ||
+			    DATASOURCE("helium") ||
+			    DATASOURCE("kvsbdb") || DATASOURCE("lsm") ||
+			    pthread_rwlock_trywrlock(&g.backup_lock) == EBUSY)
 				ckpt_config = NULL;
 			else {
 				(void)snprintf(ckpt_name, sizeof(ckpt_name),
@@ -520,18 +530,22 @@ ops(void *arg)
 				ckpt_config = ckpt_name;
 			}
 
-			/* Named checkpoints lock out backups */
-			if (ckpt_config != NULL)
-				testutil_check(
-				    pthread_rwlock_wrlock(&g.backup_lock));
-
-			testutil_checkfmt(
-			    session->checkpoint(session, ckpt_config),
-			    "%s", ckpt_config == NULL ? "" : ckpt_config);
+			ret = session->checkpoint(session, ckpt_config);
+			/*
+			 * We may be trying to create a named checkpoint while
+			 * we hold a cursor open to the previous checkpoint.
+			 * Tolerate EBUSY.
+			 */
+			if (ret != 0 && ret != EBUSY)
+				testutil_die(ret, "%s",
+				    ckpt_config == NULL ? "" : ckpt_config);
+			ret = 0;
 
 			if (ckpt_config != NULL)
 				testutil_check(
 				    pthread_rwlock_unlock(&g.backup_lock));
+			testutil_check(
+			    pthread_rwlock_unlock(&g.checkpoint_lock));
 
 			/* Rephrase the checkpoint name for cursor open. */
 			if (ckpt_config == NULL)
@@ -542,7 +556,7 @@ ops(void *arg)
 				    "checkpoint=thread-%d", tinfo->id);
 			ckpt_available = true;
 
-			/* Pick the next checkpoint operation. */
+skip_checkpoint:	/* Pick the next checkpoint operation. */
 			ckpt_op += mmrand(&tinfo->rnd, 5000, 20000);
 		}
 
@@ -1121,8 +1135,7 @@ table_append_init(void)
 	g.append_cnt = 0;
 
 	free(g.append);
-	if ((g.append = calloc(g.append_max, sizeof(uint64_t))) == NULL)
-		testutil_die(errno, "calloc");
+	g.append = dcalloc(g.append_max, sizeof(uint64_t));
 }
 
 /*
@@ -1452,7 +1465,7 @@ print_item(const char *tag, WT_ITEM *item)
 	static const char hex[] = "0123456789abcdef";
 	const uint8_t *data;
 	size_t size;
-	int ch;
+	u_char ch;
 
 	data = item->data;
 	size = item->size;
@@ -1463,8 +1476,8 @@ print_item(const char *tag, WT_ITEM *item)
 	else
 		for (; size > 0; --size, ++data) {
 			ch = data[0];
-			if (isprint(ch))
-				fprintf(stderr, "%c", ch);
+			if (__wt_isprint(ch))
+				fprintf(stderr, "%c", (int)ch);
 			else
 				fprintf(stderr, "%x%x",
 				    hex[(data[0] & 0xf0) >> 4],

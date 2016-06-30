@@ -27,18 +27,19 @@ __fhandle_method_finalize(
 	/* not required: fadvise */
 	/* not required: fallocate */
 	/* not required: fallocate_nolock */
-	/* not required: lock */
+	WT_HANDLE_METHOD_REQ(fh_lock);
 	/* not required: map */
 	/* not required: map_discard */
 	/* not required: map_preload */
 	/* not required: map_unmap */
-	WT_HANDLE_METHOD_REQ(read);
-	WT_HANDLE_METHOD_REQ(size);
-	/* not required: sync */
+	WT_HANDLE_METHOD_REQ(fh_read);
+	WT_HANDLE_METHOD_REQ(fh_size);
+	if (!readonly)
+		WT_HANDLE_METHOD_REQ(fh_sync);
 	/* not required: sync_nowait */
 	if (!readonly) {
-		WT_HANDLE_METHOD_REQ(truncate);
-		WT_HANDLE_METHOD_REQ(write);
+		WT_HANDLE_METHOD_REQ(fh_truncate);
+		WT_HANDLE_METHOD_REQ(fh_write);
 	}
 
 	return (0);
@@ -115,7 +116,7 @@ __handle_search(
 	/* If we don't find a match, optionally add a new entry. */
 	if (!found && newfh != NULL) {
 		newfh->name_hash = hash;
-		WT_CONN_FILE_INSERT(conn, newfh, bucket);
+		WT_FILE_HANDLE_INSERT(conn, newfh, bucket);
 		(void)__wt_atomic_add32(&conn->open_file_count, 1);
 
 		++newfh->ref;
@@ -255,7 +256,7 @@ __wt_open(WT_SESSION_IMPL *session,
 		WT_ERR(__wt_filename(session, name, &path));
 
 	/* Call the underlying open function. */
-	WT_ERR(file_system->open_file(file_system, &session->iface,
+	WT_ERR(file_system->fs_open_file(file_system, &session->iface,
 	    path == NULL ? name : path, file_type, flags, &fh->handle));
 	open_called = true;
 
@@ -318,7 +319,7 @@ __wt_close(WT_SESSION_IMPL *session, WT_FH **fhp)
 
 	/* Remove from the list. */
 	bucket = fh->name_hash % WT_HASH_ARRAY_SIZE;
-	WT_CONN_FILE_REMOVE(conn, fh, bucket);
+	WT_FILE_HANDLE_REMOVE(conn, fh, bucket);
 	(void)__wt_atomic_sub32(&conn->open_file_count, 1);
 
 	__wt_spin_unlock(session, &conn->fh_lock);

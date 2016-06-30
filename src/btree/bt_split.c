@@ -298,7 +298,7 @@ static int
 __split_ref_move(WT_SESSION_IMPL *session, WT_PAGE *from_home,
     WT_REF **from_refp, size_t *decrp, WT_REF **to_refp, size_t *incrp)
 {
-	WT_ADDR *addr;
+	WT_ADDR *addr, *ref_addr;
 	WT_CELL_UNPACK unpack;
 	WT_DECL_RET;
 	WT_IKEY *ikey;
@@ -345,13 +345,18 @@ __split_ref_move(WT_SESSION_IMPL *session, WT_PAGE *from_home,
 	}
 
 	/*
-	 * If there's no address (the page has never been written), or the
-	 * address has been instantiated, there's no work to do.  Otherwise,
-	 * instantiate the address in-memory, from the on-page cell.
+	 * If there's no address at all (the page has never been written), or
+	 * the address has already been instantiated, there's no work to do.
+	 * Otherwise, the address still references a split page on-page cell,
+	 * instantiate it. We can race with reconciliation and/or eviction of
+	 * the child pages, be cautious: read the address and verify it, and
+	 * only update it if the value is unchanged from the original. In the
+	 * case of a race, the address must no longer reference the split page,
+	 * we're done.
 	 */
-	addr = ref->addr;
-	if (addr != NULL && !__wt_off_page(from_home, addr)) {
-		__wt_cell_unpack((WT_CELL *)ref->addr, &unpack);
+	WT_ORDERED_READ(ref_addr, ref->addr);
+	if (ref_addr != NULL && !__wt_off_page(from_home, ref_addr)) {
+		__wt_cell_unpack((WT_CELL *)ref_addr, &unpack);
 		WT_RET(__wt_calloc_one(session, &addr));
 		if ((ret = __wt_strndup(
 		    session, unpack.data, unpack.size, &addr->addr)) != 0) {
@@ -371,7 +376,10 @@ __split_ref_move(WT_SESSION_IMPL *session, WT_PAGE *from_home,
 			break;
 		WT_ILLEGAL_VALUE(session);
 		}
-		ref->addr = addr;
+		if (!__wt_atomic_cas_ptr(&ref->addr, ref_addr, addr)) {
+			__wt_free(session, addr->addr);
+			__wt_free(session, addr);
+		}
 	}
 
 	/* And finally, copy the WT_REF pointer itself. */
@@ -1841,8 +1849,11 @@ __split_insert(WT_SESSION_IMPL *session, WT_REF *ref)
 	 */
 	for (i = 0; i < WT_SKIP_MAXDEPTH && ins_head->tail[i] == moved_ins; ++i)
 		;
-	WT_MEM_TRANSFER(page_decr, right_incr, sizeof(WT_INSERT) +
-	    (size_t)i * sizeof(WT_INSERT *) + WT_INSERT_KEY_SIZE(moved_ins));
+	WT_MEM_TRANSFER(page_decr, right_incr,
+	    sizeof(WT_INSERT) + (size_t)i * sizeof(WT_INSERT *));
+	if (type == WT_PAGE_ROW_LEAF)
+		WT_MEM_TRANSFER(
+		    page_decr, right_incr, WT_INSERT_KEY_SIZE(moved_ins));
 	WT_MEM_TRANSFER(
 	    page_decr, right_incr, __wt_update_list_memsize(moved_ins->upd));
 
@@ -1951,9 +1962,6 @@ __split_insert(WT_SESSION_IMPL *session, WT_REF *ref)
 
 	/*
 	 * Update the page accounting.
-	 *
-	 * XXX
-	 * If we fail to split the parent, the page's accounting will be wrong.
 	 */
 	__wt_cache_page_inmem_decr(session, page, page_decr);
 	__wt_cache_page_inmem_incr(session, right, right_incr);
@@ -1998,6 +2006,9 @@ __split_insert(WT_SESSION_IMPL *session, WT_REF *ref)
 
 	ins_head->tail[0]->next[0] = moved_ins;
 	ins_head->tail[0] = moved_ins;
+
+	/* Fix up accounting for the page size. */
+	__wt_cache_page_inmem_incr(session, page, page_decr);
 
 err:	if (split_ref[0] != NULL) {
 		/*

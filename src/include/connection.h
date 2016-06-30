@@ -145,20 +145,6 @@ struct __wt_named_extractor {
 } while (0)
 
 /*
- * Macros to ensure the file handle is inserted or removed from both the
- * main queue and the hashed queue.
- */
-#define	WT_CONN_FILE_INSERT(conn, fh, bucket) do {			\
-	TAILQ_INSERT_HEAD(&(conn)->fhqh, fh, q);			\
-	TAILQ_INSERT_HEAD(&(conn)->fhhash[bucket], fh, hashq);		\
-} while (0)
-
-#define	WT_CONN_FILE_REMOVE(conn, fh, bucket) do {			\
-	TAILQ_REMOVE(&(conn)->fhqh, fh, q);				\
-	TAILQ_REMOVE(&(conn)->fhhash[bucket], fh, hashq);		\
-} while (0)
-
-/*
  * WT_CONNECTION_IMPL --
  *	Implementation of WT_CONNECTION
  */
@@ -366,7 +352,6 @@ struct __wt_connection_impl {
 	uint32_t	 txn_logsync;	/* Log sync configuration */
 
 	WT_SESSION_IMPL *meta_ckpt_session;/* Metadata checkpoint session */
-	uint64_t	 meta_uri_hash;	/* Metadata file name hash */
 
 	WT_SESSION_IMPL *sweep_session;	   /* Handle sweep session */
 	wt_thread_t	 sweep_tid;	   /* Handle sweep thread */

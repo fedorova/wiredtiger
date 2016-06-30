@@ -87,6 +87,7 @@ Decrement
 Decrypt
 DeleteFileA
 EAGAIN
+EB
 EBUSY
 EEXIST
 EINTR
@@ -117,6 +118,7 @@ FNV
 FORALL
 FOREACH
 FULLFSYNC
+FindClose
 FindFirstFile
 Fixup
 Fk
@@ -131,6 +133,7 @@ GIDs
 Gcc
 Geoff
 GetEnvironmentVariableA
+GetFileAttributesA
 GetFileAttributesEx
 GetFileSizeEx
 GetLastError
@@ -146,6 +149,7 @@ IEC
 IEEE
 IKEY
 IMPL
+IMPL's
 INCR
 INIT
 INITIALIZER
@@ -212,6 +216,7 @@ Mewhort
 Mitzenmacher
 MongoDB
 MoveFile
+MoveFileA
 Multi
 Multithreaded
 Mutex
@@ -441,6 +446,7 @@ bzDecompressInit
 bzalloc
 bzfree
 bzip
+call's
 calloc
 cas
 catfmt
@@ -469,6 +475,7 @@ ckptfrag
 ckptlist
 cksum
 cloexec
+closedir
 clsm
 cmd
 cmp
@@ -642,6 +649,7 @@ fmterr
 fnv
 foc
 fopen
+formatmessage
 fp
 fprintf
 free'd
@@ -693,6 +701,7 @@ ibackup
 icount
 idx
 ifdef's
+iiu
 ikey
 im
 impl
@@ -726,9 +735,20 @@ intrin
 inuse
 io
 ip
+isalnum
+isalpha
+iscntrl
+isdigit
+isgraph
 islocked
+islower
 ispo
+isprint
+ispunct
 isrc
+isspace
+isupper
+isxdigit
 iter
 iteratively
 jnr
@@ -880,6 +900,7 @@ os
 osfhandle
 ovfl
 ownp
+pR
 packv
 pagesize
 parens
@@ -925,6 +946,7 @@ pushms
 putK
 putV
 pv
+pvA
 pwrite
 py
 qdown
@@ -1053,7 +1075,9 @@ toklen
 tokname
 tokstart
 toktype
+tolower
 totalsec
+toupper
 transactional
 transactionally
 trecno
@@ -1079,10 +1103,12 @@ uncompresssed
 undef
 unencrypted
 unesc
+unescape
 unescaped
 unicode
 uninstantiated
 unistd
+unlink
 unlinked
 unmap
 unmarshall

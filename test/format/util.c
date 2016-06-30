@@ -32,47 +32,6 @@
 #define	MAX(a, b)	(((a) > (b)) ? (a) : (b))
 #endif
 
-/*
- * dmalloc --
- *	Call malloc, dying on failure.
- */
-void *
-dmalloc(size_t len)
-{
-	void *p;
-
-	if ((p = malloc(len)) == NULL)
-		testutil_die(errno, "malloc");
-	return (p);
-}
-
-/*
- * drealloc --
- *	Call realloc, dying on failure.
- */
-void *
-drealloc(void *p, size_t len)
-{
-	void *t;
-	if ((t = realloc(p, len)) == NULL)
-		testutil_die(errno, "realloc");
-	return (t);
-}
-
-/*
- * dstrdup --
- *	Call strdup, dying on failure.
- */
-void *
-dstrdup(const void *str)
-{
-	char *p;
-
-	if ((p = strdup(str)) == NULL)
-		testutil_die(errno, "strdup");
-	return (p);
-}
-
 void
 key_len_setup(void)
 {
@@ -254,16 +213,10 @@ val_gen(WT_RAND_STATE *rnd, WT_ITEM *value, uint64_t keyno)
 	}
 
 	/*
-	 * Start the data with a 10-digit number.
-	 *
-	 * For row and non-repeated variable-length column-stores, change the
-	 * leading number to ensure every data item is unique.  For repeated
-	 * variable-length column-stores (that is, to test run-length encoding),
-	 * use the same data value all the time.
+	 * Data items have unique leading numbers by default and random lengths;
+	 * variable-length column-stores use a duplicate data value to test RLE.
 	 */
-	if ((g.type == ROW || g.type == VAR) &&
-	    g.c_repeat_data_pct != 0 &&
-	    mmrand(rnd, 1, 100) < g.c_repeat_data_pct) {
+	if (g.type == VAR && mmrand(rnd, 1, 100) < g.c_repeat_data_pct) {
 		(void)strcpy(p, "DUPLICATEV");
 		p[10] = '/';
 		value->size = val_dup_data_len;

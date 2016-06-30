@@ -55,6 +55,27 @@ __wt_btree_block_free(
 }
 
 /*
+ * __wt_btree_bytes_inuse --
+ *	Return the number of bytes in use.
+ */
+static inline uint64_t
+__wt_btree_bytes_inuse(WT_SESSION_IMPL *session)
+{
+	WT_CACHE *cache;
+	uint64_t bytes_inuse;
+
+	cache = S2C(session)->cache;
+
+	/* Adjust the cache size to take allocation overhead into account. */
+	bytes_inuse = S2BT(session)->bytes_inmem;
+	if (cache->overhead_pct != 0)
+		bytes_inuse +=
+		    (bytes_inuse * (uint64_t)cache->overhead_pct) / 100;
+
+	return (bytes_inuse);
+}
+
+/*
  * __wt_cache_page_inmem_incr --
  *	Increment a page's memory footprint in the cache.
  */
@@ -66,6 +87,7 @@ __wt_cache_page_inmem_incr(WT_SESSION_IMPL *session, WT_PAGE *page, size_t size)
 	WT_ASSERT(session, size < WT_EXABYTE);
 
 	cache = S2C(session)->cache;
+	(void)__wt_atomic_add64(&S2BT(session)->bytes_inmem, size);
 	(void)__wt_atomic_add64(&cache->bytes_inmem, size);
 	(void)__wt_atomic_addsize(&page->memory_footprint, size);
 	if (__wt_page_is_modified(page)) {
@@ -196,6 +218,8 @@ __wt_cache_page_inmem_decr(WT_SESSION_IMPL *session, WT_PAGE *page, size_t size)
 	WT_ASSERT(session, size < WT_EXABYTE);
 
 	__wt_cache_decr_check_uint64(
+	    session, &S2BT(session)->bytes_inmem, size, "WT_BTREE.bytes_inmem");
+	__wt_cache_decr_check_uint64(
 	    session, &cache->bytes_inmem, size, "WT_CACHE.bytes_inmem");
 	__wt_cache_decr_check_size(
 	    session, &page->memory_footprint, size, "WT_PAGE.memory_footprint");
@@ -274,8 +298,9 @@ __wt_cache_page_evict(WT_SESSION_IMPL *session, WT_PAGE *page)
 	modify = page->modify;
 
 	/* Update the bytes in-memory to reflect the eviction. */
-	__wt_cache_decr_check_uint64(session,
-	    &cache->bytes_inmem,
+	__wt_cache_decr_check_uint64(session, &S2BT(session)->bytes_inmem,
+	    page->memory_footprint, "WT_BTREE.bytes_inmem");
+	__wt_cache_decr_check_uint64(session, &cache->bytes_inmem,
 	    page->memory_footprint, "WT_CACHE.bytes_inmem");
 
 	/* Update the bytes_internal value to reflect the eviction */
@@ -1360,7 +1385,7 @@ __wt_page_hazard_check(WT_SESSION_IMPL *session, WT_PAGE *page)
 	WT_CONNECTION_IMPL *conn;
 	WT_HAZARD *hp;
 	WT_SESSION_IMPL *s;
-	uint32_t i, hazard_size, session_cnt;
+	uint32_t i, j, hazard_size, max, session_cnt;
 
 	conn = S2C(session);
 
@@ -1372,15 +1397,28 @@ __wt_page_hazard_check(WT_SESSION_IMPL *session, WT_PAGE *page)
 	 * come or go, we'll check the slots for all of the sessions that could
 	 * have been active when we started our check.
 	 */
+	WT_STAT_FAST_CONN_INCR(session, cache_hazard_checks);
 	WT_ORDERED_READ(session_cnt, conn->session_cnt);
-	for (s = conn->sessions, i = 0; i < session_cnt; ++s, ++i) {
+	for (s = conn->sessions, i = 0, j = 0, max = 0;
+	    i < session_cnt; ++s, ++i) {
 		if (!s->active)
 			continue;
 		WT_ORDERED_READ(hazard_size, s->hazard_size);
-		for (hp = s->hazard; hp < s->hazard + hazard_size; ++hp)
-			if (hp->page == page)
+		if (s->hazard_size > max) {
+			max = s->hazard_size;
+			WT_STAT_FAST_CONN_SET(session,
+			    cache_hazard_max, max);
+		}
+		for (hp = s->hazard; hp < s->hazard + hazard_size; ++hp) {
+			++j;
+			if (hp->page == page) {
+				WT_STAT_FAST_CONN_INCRV(session,
+				    cache_hazard_walks, j);
 				return (hp);
+			}
+		}
 	}
+	WT_STAT_FAST_CONN_INCRV(session, cache_hazard_walks, j);
 	return (NULL);
 }
 
