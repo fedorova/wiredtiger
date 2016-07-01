@@ -295,6 +295,7 @@ __evict_server(WT_SESSION_IMPL *session, bool *did_work)
 		 */
 		if (ret == EBUSY)
 			goto done_ret;
+
 		WT_RET_DONE(ret);
 		ret = __evict_clear_all_walks(session);
 		__wt_spin_unlock(session, &conn->dhandle_lock);
@@ -309,7 +310,8 @@ __evict_server(WT_SESSION_IMPL *session, bool *did_work)
 		WT_RET_DONE(__wt_epoch(session, &cache->stuck_ts));
 	} else {
 		/* After being stuck for 5 minutes, give up. */
-		WT_RET_done(__wt_epoch(session, &now));
+		WT_RET_DONE(__wt_epoch(session, &now));
+
 		if (WT_TIMEDIFF_SEC(now, cache->stuck_ts) > 300) {
 			__wt_err(session, ETIMEDOUT,
 			    "Cache stuck for too long, giving up");
@@ -507,17 +509,17 @@ __evict_helper(WT_SESSION_IMPL *session)
 	WT_DECL_RET;
 
 	WT_BEGIN_FUNC(session);
+
 	cache = S2C(session)->cache;
 	if ((ret = __evict_lru_pages(session, false)) == WT_NOTFOUND)
 		WT_RET_DONE(__wt_cond_wait(
 		    session, cache->evict_waiter_cond, 10000));
 	else
-		goto done_ret;
+		WT_RET_DONE(ret);
 
 done_ret:
 	WT_END_FUNC(session);
-	WT_RET(ret);
-	return (0);
+	return ret;
 }
 
 /*
@@ -609,8 +611,8 @@ __evict_pass(WT_SESSION_IMPL *session)
 {
 	WT_CACHE *cache;
 	WT_CONNECTION_IMPL *conn;
-	WT_EVICT_WORKER *worker;
 	WT_DECL_RET;
+	WT_EVICT_WORKER *worker;
 	uint64_t pages_evicted;
 	int loop;
 
@@ -650,20 +652,16 @@ __evict_pass(WT_SESSION_IMPL *session)
 		 * falling too far behind.  Don't wait to lock the table: with
 		 * highly threaded workloads, that creates a bottleneck.
 		 */
-		WT_RET(__wt_txn_update_oldest(session, WT_TXN_OLDEST_STRICT));
+		WT_RET_DONE(__wt_txn_update_oldest(session,
+						   WT_TXN_OLDEST_STRICT));
 
-		if (!__evict_update_work(session)) {
-			WT_TRACE_RECORD(session,
-					"evict_pass no work");
+		if (!__evict_update_work(session))
 			break;
-		}
 
 		if (loop > 10) {
 			WT_STAT_FAST_CONN_SET(session,
 			    cache_eviction_aggressive_set, 1);
 			FLD_SET(cache->state, WT_EVICT_PASS_AGGRESSIVE);
-			WT_TRACE_RECORD(session,
-					"evict_pass set aggressive");
 		}
 
 		/*
@@ -673,23 +671,23 @@ __evict_pass(WT_SESSION_IMPL *session)
 		if (FLD_ISSET(cache->state, WT_EVICT_PASS_ALL |
 		    WT_EVICT_PASS_DIRTY | WT_EVICT_PASS_WOULD_BLOCK) &&
 		    conn->evict_workers < conn->evict_workers_max) {
-			WT_RET(__wt_verbose(session, WT_VERB_EVICTSERVER,
+			WT_RET_DONE(__wt_verbose(session, WT_VERB_EVICTSERVER,
 			    "Starting evict worker: %"PRIu32"\n",
 			    conn->evict_workers));
 			if (conn->evict_workers >= conn->evict_workers_alloc)
 				WT_RET(__evict_workers_resize(session));
 			worker = &conn->evict_workctx[conn->evict_workers++];
 			F_SET(worker, WT_EVICT_WORKER_RUN);
-			WT_RET(__wt_thread_create(session,
+			WT_RET_DONE(__wt_thread_create(session,
 			    &worker->tid, __evict_thread_run, worker->session));
 		}
 
-		WT_RET(__wt_verbose(session, WT_VERB_EVICTSERVER,
+		WT_RET_DONE(__wt_verbose(session, WT_VERB_EVICTSERVER,
 		    "Eviction pass with: Max: %" PRIu64
 		    " In use: %" PRIu64 " Dirty: %" PRIu64,
 		    conn->cache_size, cache->bytes_inmem, cache->bytes_dirty));
 
-		WT_RET(__evict_lru_walk(session));
+		WT_RET_DONE(__evict_lru_walk(session));
 		WT_RET_NOTFOUND_OK_DONE(ret = __evict_lru_pages(session, true));
 
 		/*
@@ -718,7 +716,7 @@ __evict_pass(WT_SESSION_IMPL *session)
 					F_SET(cache, WT_CACHE_STUCK);
 					WT_STAT_FAST_CONN_INCR(
 					    session, cache_eviction_slow);
-					WT_RET(__wt_verbose(
+					WT_RET_DONE(__wt_verbose(
 					    session, WT_VERB_EVICTSERVER,
 					    "unable to reach eviction goal"));
 				}
@@ -731,7 +729,7 @@ __evict_pass(WT_SESSION_IMPL *session)
 	}
 done_ret:
 	WT_END_FUNC(session);
-	return ret;
+	return (ret);
 }
 
 /*
@@ -764,13 +762,11 @@ __evict_clear_walk(WT_SESSION_IMPL *session)
 	 */
 	btree->evict_ref = NULL;
 	WT_WITH_DHANDLE(cache->walk_session, session->dhandle,
-	    (ret = __wt_page_release(cache->walk_session,
-	    ref, WT_READ_NO_EVICT)));
-	goto done_ret;
-
+			(ret = __wt_page_release(cache->walk_session,
+						 ref, WT_READ_NO_EVICT)));
 done_ret:
 	WT_END_FUNC(session);
-	return ret;
+	return (ret);
 }
 
 /*
