@@ -57,10 +57,7 @@ __wt_spin_trylock(WT_SESSION_IMPL *session, WT_SPINLOCK *t)
 	int ret;
 	WT_UNUSED(session);
 
-	WT_BEGIN_SPINLOCK(session, t);
 	ret =  (__sync_lock_test_and_set(&t->lock, 1) == 0 ? 0 : EBUSY);
-	WT_END_SPINLOCK(session, t);
-
 	return ret;
 }
 
@@ -72,16 +69,12 @@ static inline void
 __wt_spin_lock(WT_SESSION_IMPL *session, WT_SPINLOCK *t)
 {
 	int i;
-
-	WT_BEGIN_SPINLOCK(session, t);
-
 	while (__sync_lock_test_and_set(&t->lock, 1)) {
 		for (i = 0; t->lock && i < WT_SPIN_COUNT; i++)
 			WT_PAUSE();
 		if (t->lock)
 			__wt_yield(session);
 	}
-	WT_END_SPINLOCK(session, t);
 }
 
 /*
@@ -92,9 +85,7 @@ static inline void
 __wt_spin_unlock(WT_SESSION_IMPL *session, WT_SPINLOCK *t)
 {
 	WT_UNUSED(session);
-	WT_BEGIN_SPINLOCK(session, t);
 	__sync_lock_release(&t->lock);
-	WT_END_SPINLOCK(session, t);
 }
 
 #elif SPINLOCK_TYPE == SPINLOCK_PTHREAD_MUTEX ||\
@@ -152,10 +143,7 @@ __wt_spin_trylock(WT_SESSION_IMPL *session, WT_SPINLOCK *t)
 	int ret;
 	WT_UNUSED(session);
 
-	WT_BEGIN_SPINLOCK(session, t);
 	ret =  (pthread_mutex_trylock(&t->lock));
-	WT_END_SPINLOCK(session, t);
-
 	return ret;
 }
 
@@ -167,9 +155,7 @@ static inline void
 __wt_spin_lock(WT_SESSION_IMPL *session, WT_SPINLOCK *t)
 {
 	WT_UNUSED(session);
-	WT_BEGIN_SPINLOCK(session, t);
 	(void)pthread_mutex_lock(&t->lock);
-	WT_END_SPINLOCK(session, t);
 }
 #endif
 
@@ -181,9 +167,7 @@ static inline void
 __wt_spin_unlock(WT_SESSION_IMPL *session, WT_SPINLOCK *t)
 {
 	WT_UNUSED(session);
-	WT_BEGIN_SPINLOCK(session, t);
 	(void)pthread_mutex_unlock(&t->lock);
-	WT_END_SPINLOCK(session, t);
 }
 
 #elif SPINLOCK_TYPE == SPINLOCK_MSVC
